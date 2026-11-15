@@ -1,0 +1,81 @@
+name: Sync Upstream and Build latest
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: '即使上游无更新也强制构建镜像'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  sync-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync upstream
+        id: sync
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream https://github.com/niyouqianma/workbuddy2api-hub.git
+          git fetch upstream main
+
+          BEFORE=$(git rev-parse HEAD)
+          git merge upstream/main --no-edit --allow-unrelated-histories
+          AFTER=$(git rev-parse HEAD)
+
+          if [ "$BEFORE" = "$AFTER" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "上游无新提交"
+          else
+            git push origin main
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "已同步上游新提交"
+          fi
+
+      - name: Decide build
+        id: decide
+        run: |
+          if [ "${{ steps.sync.outputs.has_changes }}" = "true" ] || [ "${{ inputs.force_build }}" = "true" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Buildx
+        if: steps.decide.outputs.build == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: steps.decide.outputs.build == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push latest
+        if: steps.decide.outputs.build == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/entaroartanis114514/workbuddy2api-hub:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
