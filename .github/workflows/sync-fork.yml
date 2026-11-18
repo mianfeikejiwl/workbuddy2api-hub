@@ -1,0 +1,42 @@
+name: sync-fork
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-fork-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge upstream into fork
+        env:
+          UPSTREAM_REPO: niyouqianma/workbuddy2api-hub
+          TARGET_BRANCH: main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch upstream "${TARGET_BRANCH}"
+
+          if git merge-base --is-ancestor "upstream/${TARGET_BRANCH}" HEAD; then
+            echo "Fork already up to date with upstream/${TARGET_BRANCH}; nothing to push."
+            exit 0
+          fi
+
+          git merge --no-edit "upstream/${TARGET_BRANCH}"
+          git push origin "HEAD:${TARGET_BRANCH}"
