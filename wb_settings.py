@@ -2994,6 +2994,37 @@ def set_local_web_tools(accounts_dir, enabled):
     return enabled
 
 
+WEB_GATEWAY_KEY = "web_gateway"
+
+
+def web_gateway(accounts_dir):
+    """Stored web-gateway config, normalized; defaults when absent.
+
+    形状与校验交给 ``wb_webgateway.settings``，这里只负责存取，避免两份
+    默认值各自漂移。导入失败时回默认值，让网关在缺包时仍能启动。
+    """
+    try:
+        import wb_webgateway.settings as gateway_settings
+    except Exception:
+        return {}
+    return gateway_settings.normalize(load(accounts_dir).get(WEB_GATEWAY_KEY))
+
+
+def set_web_gateway(accounts_dir, config):
+    """Persist the web-gateway config. Raises ValueError on invalid input."""
+    import wb_webgateway.settings as gateway_settings
+
+    errors = gateway_settings.validate(config)
+    if errors:
+        raise ValueError("; ".join(errors))
+    normalized = gateway_settings.normalize(config)
+    with _lock:
+        data = load(accounts_dir)
+        data[WEB_GATEWAY_KEY] = normalized
+        save(accounts_dir, data)
+    return normalized
+
+
 def accounts_collapsed(accounts_dir):
     """Whether the panel's account section is collapsed.
 
