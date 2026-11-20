@@ -1,3 +1,27 @@
+## v2.1.7
+
+- 用量页先独立显示今日统计，累计与历史在后台补齐。最近请求支持按版本查询，空闲时返回简短状态，实时列表保留未变化的行，翻到历史页时维持当前位置。
+- 封存段会生成可重用的压缩汇总。即使全局断点缺失，也能合并有效的归档摘要，单段摘要损坏或依赖变更时只重算受影响的段。
+
+- **大用量看板**：后台批量读新增记录，复用现有断点，同时更新看板聚合和时间序列。面板展示计算进度和更新时间，按版本拉取变化的数据；性能分位约每 30 秒刷新。自定义历史区间可以手动刷新，日期边界按原始流水精确核算。
+- **用量日志轮转**：活动日志默认达到 8 MiB 后封存到 `usage.jsonl.segments/`，普通归档后台压缩并建立时间索引，旧流水保留。备份时复制整个用量目录。可设置 `WB_USAGE_ROTATE_BYTES=0` 停止新轮转。降级到只支持单文件的旧版前，可用 `python -m wb_usage_io export` 导出完整流水。
+
+## v2.1.5
+
+- **更新源迁移**：`wb_updates.py` 的默认仓库从 `ardeyouxipianyi/workbuddy2api-hub` 切换到 `niyouqianma/workbuddy2api-hub`。面板每日更新检查、手动检查与安装链接不再访问已停用的旧仓库；自建 fork 仍可通过 `WB_UPDATE_REPO=owner/repo` 覆盖。
+- **面板入口迁移**：顶部 GitHub 图标与侧栏「WorkBuddy 仓库」链接同步切换到新仓库。
+- **回归测试**：新增默认仓库断言，更新检查与设置页 UI 测试改用新仓库 URL。
+
+## v2.1.4
+
+- **网页工具网关**：新增 `/v1/tools/search`、`/v1/tools/fetch`、`/v1/tools/search_fetch` 与伪模型 `wb-search` / `wb-fetch` / `wb-search-fetch`。搜索和抓取后端支持 WorkBuddy 官方 `/agenttool` 与本地多引擎链；Anthropic Messages、OpenAI Responses 和 Gemini `googleSearch` 已接入同一套 provider，默认关闭，不消耗上游模型额度。
+- **网页工具安全修正**：Responses 与 Anthropic 多轮网页工具继承 API Key 的账号白名单；WorkBuddy `/agenttool` 禁止跟随重定向，避免账号鉴权头被发送到其他主机。
+- **Responses 工具结果顺序修复**：重放历史中 `function_call_output` 早于 `function_call` 时，出站前移动到对应调用之后，避免上游返回 400 / code 11148；带文本的相邻 `tool_calls` 批次也可安全合并。
+- **重启后积分刷新**：积分刷新器首轮只等待 20 秒，随后恢复配置间隔，避免重启后长时间显示旧快照。
+- **外部账号接口与管理页**：新增独立外部 API Key、`account:auth` / `account:read` scope、浏览器授权链接、脱敏账号列表、调用记录分页与动态请求示例；密钥文件权限为 `0600`。
+- **仓库迁移**：Release、Docker、一键部署与 Star 趋势链接切换到新仓库 `niyouqianma/workbuddy2api-hub`，历史贡献与上游项目署名保留。
+- 全量测试：**310 个套件：232 个 Python + 78 个 JS，`310 passed, 0 failed, 0 skipped`**。
+
 ## v2.1.3
 
 - **CodeArts 并发占满改为有界排队**（#886 / #887）：单账号并发槽被占满时最多等待 `busy_wait_seconds`（默认 10 秒，范围 0–120），名额释放通过 `Condition` 立即唤醒；超时返回可重试的 429 `rate_limit_error` 并带 `reset_at`，不再误报 502「没有可用的账号」。真正空池 / 全停用 / 全冷却仍提示添加账号；多账号仍优先选空闲账号。

@@ -21,11 +21,11 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=workbuddy2api
-PKG_VERSION:=2.1.3
+PKG_VERSION:=2.1.7
 PKG_RELEASE:=1
 
 PKG_LICENSE:=MIT
-PKG_MAINTAINER:=ardeyouxipianyi
+PKG_MAINTAINER:=niyouqianma
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
@@ -55,7 +55,7 @@ define Package/workbuddy2api
   SECTION:=net
   CATEGORY:=Network
   TITLE:=WorkBuddy multi-account gateway with OpenAI-compatible API
-  URL:=https://github.com/ardeyouxipianyi/workbuddy2api-hub
+  URL:=https://github.com/niyouqianma/workbuddy2api-hub
   DEPENDS:=+python3-light +python3-urllib +python3-uuid +python3-openssl +python3-sqlite3 +python3-codecs
   PKGARCH:=all
 endef

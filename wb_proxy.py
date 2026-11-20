@@ -26,7 +26,7 @@ import heapq
 import http.client
 import io
 import ipaddress
-from collections import deque
+from collections import OrderedDict, deque
 import re
 import atexit
 import json
@@ -85,6 +85,7 @@ import wb_pool_scope
 import wb_pool_text
 import wb_pricing
 import wb_usage_io
+from wb_usage_board import UsageBoard
 import wb_settings
 import wb_webprompts
 import wb_tiers
@@ -761,7 +762,7 @@ def backfill_media_prices():
             learned += 1
     # 生图没有任务表（同步调用），实扣只落在 usage.jsonl 里，也从那儿回填。
     try:
-        with open(USAGE_LOG, encoding="utf-8") as handle:
+        with _open_usage_or_file(mode="r", encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
                 if not line:
@@ -1825,9 +1826,10 @@ def _persist_usage(row, fail_label):
     pure overhead on the request path. One append per request now.
     """
     try:
-        os.makedirs(USAGE_DIR, exist_ok=True)
-        with open(USAGE_LOG, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        if not wb_usage_io.append_line(
+                USAGE_LOG, json.dumps(row, ensure_ascii=False),
+                lambda error: log("%s: %s" % (fail_label, error))):
+            return
         # The daily guard is evaluated on the next request. Let its cached fold
         # observe this row immediately instead of handing the same account a
         # request for up to _STATS_TTL seconds after it crossed the limit.
@@ -2485,7 +2487,7 @@ def _perf_fold(state):
     offset = state["offset"]
     pending_raw = None
     try:
-        with open(USAGE_LOG, "rb") as fh:
+        with _open_usage_or_file() as fh:
             fh.seek(offset)
             while True:
                 raw = fh.readline()
@@ -2636,13 +2638,13 @@ def _log_complete_frontier(path=None):
     """
     path = path or USAGE_LOG
     try:
-        size = os.path.getsize(path)
+        size = _usage_log_key()[0] if path == USAGE_LOG else os.path.getsize(path)
     except OSError:
         return 0
     chunk = 256 * 1024
     pos = size
     try:
-        with open(path, "rb") as fh:
+        with _open_usage_or_file(path) as fh:
             while pos > 0:
                 step = min(chunk, pos)
                 pos -= step
@@ -2665,13 +2667,13 @@ def _perf_rebuild(key, sample, realm, since, until):
     raw_lines = _tail_lines(USAGE_LOG, sample)
     frontier = _log_complete_frontier()
     try:
-        size = os.path.getsize(USAGE_LOG)
+        size = _usage_log_key()[0]
     except OSError:
         size = 0
     pending_raw = None
     if size > frontier:
         try:
-            with open(USAGE_LOG, "rb") as fh:
+            with _open_usage_or_file() as fh:
                 fh.seek(frontier)
                 pending_raw = fh.read()
         except OSError:
@@ -2798,46 +2800,35 @@ def _scan_daily_usage(offset, state):
     this read raced the writer.
     """
     midnight = _local_midnight()
-    with open(USAGE_LOG, encoding="utf-8") as fh:
-        fh.seek(offset)
-        while True:
-            pos = fh.tell()
-            line = fh.readline()
-            if not line:
-                break
-            if not line.endswith("\n"):
-                return state, pos
-            offset = fh.tell()
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                row = json.loads(line)
-            except Exception:
-                continue
-            if (row.get("at") or 0) < midnight:
-                continue
-            # Same rule as the analytics scan: a client cancellation is not a
-            # consumed request, and its token counts are incomplete.
-            if row_outcome(row) == "client_aborted":
-                continue
-            tokens = row.get("total_tokens") or 0
-            # key 维度累加必须先于 uid 判空：400 失败行没有 account 字段
-            # （全库仅 24.3% 的失败行带账号），但它一定有 key。
-            kid = row.get("key")
-            if kid:
-                state["keytokens"][kid] = state["keytokens"].get(kid, 0) + tokens
-            uid = row.get("account")
-            if not uid:
-                continue
-            state["tokens"][uid] = state["tokens"].get(uid, 0) + tokens
-            credit = row.get("credit") or 0
-            if credit:
-                state["credits"][uid] = state["credits"].get(uid, 0.0) + credit
-            mid = row.get("model")
-            if mid:
-                per = state["models"].setdefault(uid, {})
-                per[mid] = per.get(mid, 0) + tokens
+    if not wb_usage_io.log_key(USAGE_LOG)[0]:
+        if not os.path.isfile(USAGE_LOG):
+            raise FileNotFoundError(USAGE_LOG)
+
+    def fold(row):
+        if (row.get("at") or 0) < midnight or row_outcome(row) == "client_aborted":
+            return
+        tokens = row.get("total_tokens") or 0
+        # Count key usage even if the request failed before selecting an account.
+        kid = row.get("key")
+        if kid:
+            state["keytokens"][kid] = state["keytokens"].get(kid, 0) + tokens
+        uid = row.get("account")
+        if not uid:
+            return
+        state["tokens"][uid] = state["tokens"].get(uid, 0) + tokens
+        credit = row.get("credit") or 0
+        if credit:
+            state["credits"][uid] = state["credits"].get(uid, 0.0) + credit
+        mid = row.get("model")
+        if mid:
+            per = state["models"].setdefault(uid, {})
+            per[mid] = per.get(mid, 0) + tokens
+
+    offset, error = _scan_usage_from(
+        offset, fold, skip_raw=lambda raw: _line_outside_window_bytes(raw, midnight, None),
+        bounds=(midnight, None))
+    if error is not None:
+        raise error
     return state, offset
 
 
@@ -4404,6 +4395,23 @@ _EMPTY_POLICIES = {}
 _EMPTY_TIMELINE = []
 
 
+def _open_usage_or_file(path=None, mode="rb", encoding=None):
+    path = path or USAGE_LOG
+    if path != USAGE_LOG:
+        return open(path, mode, encoding=encoding)
+    if not wb_usage_io.has_archive(path):
+        try:
+            handle = open(path, mode, encoding=encoding) if encoding else open(path, mode)
+        except FileNotFoundError:
+            if not wb_usage_io.has_archive(path):
+                raise
+        else:
+            if not wb_usage_io.has_archive(path):
+                return handle
+            handle.close()
+    return wb_usage_io.open_log(path, mode, encoding)
+
+
 def _usage_log_key(path=None):
     """(size, device, inode) of the usage log, or a zero key when it is gone.
 
@@ -4419,7 +4427,9 @@ def _usage_log_key(path=None):
     event journal with the same rule.
     """
     try:
-        info = os.stat(path or USAGE_LOG)
+        if path is None or path == USAGE_LOG:
+            return wb_usage_io.log_key(USAGE_LOG)
+        info = os.stat(path)
         return (info.st_size, info.st_dev, info.st_ino)
     except OSError:
         return (0, 0, 0)
@@ -4457,7 +4467,7 @@ def _log_tail_signature(offset, path=None):
     if offset <= 0:
         return b""
     try:
-        with open(path or USAGE_LOG, "rb") as fh:
+        with _open_usage_or_file(path) as fh:
             start = max(0, offset - _TAIL_SIGNATURE)
             fh.seek(start)
             return fh.read(offset - start)
@@ -4874,7 +4884,63 @@ def _realm_fold_reproducible(disk):
     return pool == disk
 
 
-def _scan_usage_from(offset, fold, stop_at=None, skip=None, skip_raw=None, path=None):
+_usage_scan_local = threading.local()
+
+
+def _scan_usage_from(offset, fold, stop_at=None, skip=None, skip_raw=None, path=None,
+                     bounds=None):
+    is_usage = path is None or path == USAGE_LOG
+    batch = getattr(_usage_scan_local, "batch", None) if is_usage else None
+    if batch is not None:
+        ceiling, parsed, boundaries = batch
+        stop_at = ceiling if stop_at is None else min(ceiling, stop_at)
+        if skip is None and skip_raw is None and bounds is None and offset < stop_at:
+            if stop_at - offset > _BOARD_SCAN_BYTES:
+                key = offset, stop_at
+                if key not in boundaries:
+                    boundaries[key] = wb_usage_io.scan_boundary(
+                        USAGE_LOG, offset, stop_at, _BOARD_SCAN_BYTES)
+                stop_at = boundaries[key]
+            key = offset, stop_at
+            if key not in parsed:
+                rows = []
+                end, error = _read_usage_rows(offset, None, stop_at, capture=rows)
+                parsed[key] = rows, end, error
+            rows, end, error = parsed[key]
+            for row_end, row in rows:
+                try:
+                    fold(row)
+                except Exception as exc:
+                    return row_end, exc
+            return end, error
+    if is_usage and bounds is not None and wb_usage_io.has_archive(USAGE_LOG):
+        end = offset
+        span = None
+        for begin, finish in wb_usage_io.iter_blocks(
+                USAGE_LOG, *bounds, offset=offset, stop_at=stop_at):
+            if finish <= offset:
+                continue
+            begin = max(offset, begin)
+            if stop_at is not None:
+                if begin >= stop_at:
+                    break
+                finish = min(stop_at, finish)
+            if span is not None and span[1] == begin:
+                span = span[0], finish
+                continue
+            if span is not None:
+                end, error = _read_usage_rows(span[0], fold, span[1], skip, skip_raw)
+                if error is not None:
+                    return end, error
+            span = begin, finish
+        if span is not None:
+            return _read_usage_rows(span[0], fold, span[1], skip, skip_raw)
+        return end, None
+    return _read_usage_rows(offset, fold, stop_at, skip, skip_raw, path)
+
+
+def _read_usage_rows(offset, fold, stop_at=None, skip=None, skip_raw=None, path=None,
+                     capture=None):
     """Fold every row past `offset` into `fold(row)`; returns (offset, error).
 
     The offset handed back is the end of the last row the pass got through.
@@ -4917,7 +4983,7 @@ def _scan_usage_from(offset, fold, stop_at=None, skip=None, skip_raw=None, path=
     if stop_at is not None and offset >= stop_at:
         return offset, None
     try:
-        with open(path or USAGE_LOG, "rb") as fh:
+        with _open_usage_or_file(path) as fh:
             fh.seek(offset)
             while True:
                 if stop_at is not None and offset >= stop_at:
@@ -4962,7 +5028,10 @@ def _scan_usage_from(offset, fold, stop_at=None, skip=None, skip_raw=None, path=
                     offset = end
                     continue
                 try:
-                    fold(row)
+                    if capture is None:
+                        fold(row)
+                    else:
+                        capture.append((end, row))
                 except Exception as exc:
                     return end, exc
                 offset = end
@@ -5341,6 +5410,14 @@ def _usage_snap_state_cold(r, pricing_on):
     return _usage_snap_state[r]["offset"] <= 0
 
 
+def _fold_snapshot_state(row, state, r, pricing_on, pricing):
+    day = _usage_day_bucket(state, row, r, _day_snapshot_bucket)
+    hour = None if day is None else _usage_hour_bucket(state, row, day)
+    extras = () if day is None else ((day,) if hour is None else (day, hour))
+    _fold_usage_snapshot(row, state["snap"], r, None, None, pricing_on,
+                         also=extras, pricing=pricing, priced=state["pricing"])
+
+
 def _usage_snap_state_ready(r, pricing_on):
     """把 `r` 的 all-time 折叠推进到文件尾；返回 (state, offset, error)。
 
@@ -5355,16 +5432,8 @@ def _usage_snap_state_ready(r, pricing_on):
     state = _usage_snap_state[r]
     priced = state["pricing"]
 
-    def fold(row):
-        # 一行折三处：all-time 半 + 它所属那天的窗口半 + 那个小时的小时桶。
-        # 过滤与算价在 _fold_usage_snapshot 里只做一次。
-        day = _usage_day_bucket(state, row, r, _day_snapshot_bucket)
-        hour = None if day is None else _usage_hour_bucket(state, row, day)
-        extras = () if day is None else ((day,) if hour is None else (day, hour))
-        _fold_usage_snapshot(row, state["snap"], r, None, None, pricing_on,
-                             also=extras, pricing=pricing, priced=priced)
-
-    offset, error = _scan_usage_from(state["offset"], fold)
+    offset, error = _scan_usage_from(state["offset"], lambda row:
+        _fold_snapshot_state(row, state, r, pricing_on, pricing))
     if error is None:
         state["offset"] = offset
         state["tail"] = _log_tail_signature(offset)
@@ -5433,7 +5502,8 @@ def _scan_usage_snapshot_window(r, since, until, pricing_on=None):
         skip=lambda line: _line_outside_window(line, since or None,
                                                  until or None),
         skip_raw=lambda raw: _line_outside_window_bytes(raw, since or None,
-                                                        until or None))
+                                                        until or None),
+        bounds=(since or None, until or None))
     if error is not None:
         log(f"usage snapshot read failed: {error}")
     return snap
@@ -5573,6 +5643,31 @@ def _usage_snapshot_window_from_hours(r, since, until, pricing_on):
     return snap
 
 
+def _usage_day_window_parts(state, since, until):
+    """Full local days and inclusive partial edges in a covered window."""
+    if not since or not _usage_day_buckets_enabled():
+        return None
+    try:
+        first = _local_day_key(since)
+        last = _local_day_key(until) if until is not None else None
+        if first == last or not _days_cover(state, first):
+            return None
+        next_day = _local_midnight(since, -1)
+        last_start = _day_key_start(last) if last is not None else None
+        if not next_day > since or (last_start is not None and last_start > until):
+            return None
+        whole = [state["days"][key] for key in sorted(state["days"])
+                 if key > first and (last is None or key < last)]
+        if not whole:
+            return None
+        edges = [(since, math.nextafter(next_day, -math.inf))]
+        if last is not None:
+            edges.append((last_start, until))
+        return whole, edges
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
 def _usage_snapshot_window(r, since, until, pricing_on=None):
     """窗口半快照：对齐窗口由日桶/小时桶相加，其余保持整段扫描。
 
@@ -5671,7 +5766,7 @@ def _tail_lines(path, max_lines, chunk=256 * 1024):
     """
     lines = []
     try:
-        with open(path, "rb") as fh:
+        with _open_usage_or_file(path) as fh:
             fh.seek(0, os.SEEK_END)
             pos = fh.tell()
             buf = b""
@@ -5942,61 +6037,48 @@ def _usage_timeseries_scan(realm, lo, hi, step):
     # 逐条一致（键唯一，堆的替换规则与稳定排序的取舍等价）。
     credits = []
     credit_seq = 0
-    try:
-        with open(USAGE_LOG, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                # Cheap window test first: a day or week window covers a small
-                # slice of a multi-day log, and the json.loads this skips is
-                # what made a cold scan expensive. A line the check cannot read
-                # exactly falls through to the full parse and the full test
-                # below, so a skipped row is always one the parse would have
-                # skipped as well - same output, fewer parses.
-                if _line_outside_window(line, lo, hi):
-                    continue
-                try:
-                    row = json.loads(line)
-                except Exception:
-                    continue
-                if realm and not row_matches_realm(row, realm):
-                    continue
-                at = row.get("at") or 0
-                if at < lo or at > hi:
-                    continue
-                key = int((at - origin) // step)
-                bucket = buckets.setdefault(key, {
-                    "at": origin + key * step, "requests": 0, "errors": 0,
-                    "prompt_tokens": 0, "completion_tokens": 0,
-                    "reasoning_tokens": 0, "cached_tokens": 0,
-                    "total_tokens": 0, "credit": 0.0,
-                })
-                outcome = row_outcome(row)
-                if outcome == "completed":
-                    bucket["requests"] += 1
-                    for field in ("prompt_tokens", "completion_tokens",
-                                  "reasoning_tokens", "cached_tokens",
-                                  "total_tokens"):
-                        bucket[field] += (row.get(field) or 0)
-                else:
-                    bucket["errors"] += 1
-                credit = row.get("credit") or 0
-                if outcome != "client_aborted":
-                    bucket["credit"] += credit
-                if credit > 0:
-                    seq = -credit_seq
-                    credit_seq += 1
-                    if len(credits) < _SERIES_CREDITS_KEEP:
-                        heapq.heappush(credits,
-                                       (at, seq, _series_credit_entry(at, row)))
-                    elif (at, seq) > (credits[0][0], credits[0][1]):
-                        heapq.heapreplace(credits,
-                                          (at, seq, _series_credit_entry(at, row)))
-    except FileNotFoundError:
-        pass
-    except Exception as exc:
-        log("usage timeseries read failed: %s" % exc)
+    def fold(row):
+        nonlocal credit_seq
+        if realm and not row_matches_realm(row, realm):
+            return
+        at = row.get("at") or 0
+        if at < lo or at > hi:
+            return
+        key = int((at - origin) // step)
+        bucket = buckets.setdefault(key, {
+            "at": origin + key * step, "requests": 0, "errors": 0,
+            "prompt_tokens": 0, "completion_tokens": 0,
+            "reasoning_tokens": 0, "cached_tokens": 0,
+            "total_tokens": 0, "credit": 0.0,
+        })
+        outcome = row_outcome(row)
+        if outcome == "completed":
+            bucket["requests"] += 1
+            for field in ("prompt_tokens", "completion_tokens",
+                          "reasoning_tokens", "cached_tokens",
+                          "total_tokens"):
+                bucket[field] += (row.get(field) or 0)
+        else:
+            bucket["errors"] += 1
+        credit = row.get("credit") or 0
+        if outcome != "client_aborted":
+            bucket["credit"] += credit
+        if credit > 0:
+            seq = -credit_seq
+            credit_seq += 1
+            if len(credits) < _SERIES_CREDITS_KEEP:
+                heapq.heappush(credits,
+                               (at, seq, _series_credit_entry(at, row)))
+            elif (at, seq) > (credits[0][0], credits[0][1]):
+                heapq.heapreplace(credits,
+                                  (at, seq, _series_credit_entry(at, row)))
+
+    _, error = _scan_usage_from(
+        0, fold, skip=lambda line: _line_outside_window(line, lo, hi),
+        skip_raw=lambda raw: _line_outside_window_bytes(raw, lo, hi),
+        bounds=(lo, hi))
+    if error is not None:
+        log("usage timeseries read failed: %s" % error)
     # 堆里就是窗口内的前 50 条；按同一把键排出（键唯一，等于旧实现的稳定
     # 排序结果：at 倒序、同 at 保持日志顺序）。
     credits.sort(key=lambda item: (item[0], item[1]), reverse=True)
@@ -6133,7 +6215,7 @@ def _count_usage_scan(state):
     """
     offset = state["offset"]
     try:
-        with open(USAGE_LOG, "rb") as fh:
+        with _open_usage_or_file() as fh:
             fh.seek(offset)
             while True:
                 raw = fh.readline()
@@ -6422,7 +6504,7 @@ def _recent_index_extend(state):
         return False
     offset = state["size"]
     try:
-        with open(USAGE_LOG, "rb") as fh:
+        with _open_usage_or_file() as fh:
             fh.seek(offset)
             while True:
                 raw = fh.readline()
@@ -6776,7 +6858,7 @@ def _recent_index_read(start, realm, skip, take):
     rows = []
     seen = 0
     try:
-        with open(USAGE_LOG, "rb") as fh:
+        with _open_usage_or_file() as fh:
             fh.seek(start)
             buf = b""
             while len(rows) < take:
@@ -6825,7 +6907,7 @@ def _recent_backward_page(realm, page, limit):
     matching = []
     chunk = 256 * 1024
     try:
-        with open(USAGE_LOG, "rb") as fh:
+        with _open_usage_or_file() as fh:
             fh.seek(0, os.SEEK_END)
             pos = fh.tell()
             buf = b""
@@ -6893,7 +6975,7 @@ def _recent_scan_filtered(realm, need, filters, scan_cap=None):
     truncated = False
     chunk = 256 * 1024
     try:
-        with open(USAGE_LOG, "rb") as fh:
+        with _open_usage_or_file() as fh:
             fh.seek(0, os.SEEK_END)
             pos = fh.tell()
             buf = b""
@@ -6967,6 +7049,47 @@ def recent_filter_match(item, account=None, model=None, key=None, outcome=None):
         elif o != outcome:
             return False
     return True
+
+
+_recent_reply_lock = threading.Lock()
+_recent_replies = OrderedDict()
+
+
+def _recent_reply_stamp():
+    pricing = _pricing_inputs()
+    return (USAGE_LOG, wb_usage_io.log_key(USAGE_LOG), wb_usage_io.active_stamp(USAGE_LOG),
+            _realm_inputs(), wb_usage_io.active_stamp(wb_settings.settings_path(ACCOUNTS_DIR)),
+            tuple(_object_digest(item) for item in pricing) if pricing else None,
+            wb_pricing.usd_cny(), _recent_index_enabled(), RECENT_FILTER_SCAN_ROWS)
+
+
+def _versioned_recent_reply(query_key, revision):
+    # Resolve a stable response body before publishing its version. Never
+    # hold the page cache lock across an index rebuild or a filtered scan.
+    try:
+        stamp = _recent_reply_stamp()
+    except OSError:
+        stamp = None
+    now = time.monotonic()
+    with _recent_reply_lock:
+        cached = _recent_replies.get(query_key)
+        if (stamp is not None and cached is not None and stamp == cached[0]
+                and now - cached[1] < 15):
+            _recent_replies.move_to_end(query_key)
+            payload = cached[2]
+            if revision == payload["revision"]:
+                return {"revision": revision, "unchanged": True}
+            return payload
+    payload = _redact_account_names(recent_usage(*query_key))
+    version = hashlib.sha256(json.dumps(
+        payload, ensure_ascii=True, separators=(",", ":")).encode("ascii")).hexdigest()[:32]
+    payload["revision"] = version
+    with _recent_reply_lock:
+        _recent_replies[query_key] = stamp, now, payload
+        _recent_replies.move_to_end(query_key)
+        while len(_recent_replies) > 16:
+            _recent_replies.popitem(last=False)
+    return {"revision": version, "unchanged": True} if revision == version else payload
 
 
 def recent_usage(limit=100, realm=None, page=1, account=None, model=None, key=None,
@@ -8521,6 +8644,16 @@ def _analytics_state_cold(realm, pricing_on=None):
     return _analytics_state[realm]["offset"] <= 0
 
 
+def _fold_analytics_state(row, state, realm, pricing_on, pricing):
+    at = row.get("at") or 0
+    state["max_at"] = max(state["max_at"], at)
+    day = _usage_day_bucket(state, row, realm, _day_analytics_bucket)
+    hour = _analytics_hour_bucket(day, at)
+    also = [(bucket, _ANALYTICS_WINDOW) for bucket in (day, hour) if bucket is not None]
+    _fold_usage_analytics(row, realm, state["maps"], _ANALYTICS_ALL, pricing_on,
+                          also=also, pricing=pricing, priced=state["pricing"])
+
+
 def _analytics_state_ready(realm, pricing_on=None):
     """把 `realm` 的 all-time 折叠推进到文件尾；返回 (state, offset, error)。
 
@@ -8543,25 +8676,8 @@ def _analytics_state_ready(realm, pricing_on=None):
     state = _analytics_state[realm]
     priced = state["pricing"]
 
-    def fold(row):
-        # 一行折三处：all-time 半 + 它所属那天的窗口半 + 那天里它所属那小时
-        # 的窗口半（过滤与算价只做一次）。
-        at = row.get("at") or 0
-        if at > state["max_at"]:
-            state["max_at"] = at
-        day = _usage_day_bucket(state, row, realm, _day_analytics_bucket)
-        hour = _analytics_hour_bucket(day, at)
-        if day is None:
-            also = None
-        elif hour is None:
-            also = ((day, _ANALYTICS_WINDOW),)
-        else:
-            also = ((day, _ANALYTICS_WINDOW), (hour, _ANALYTICS_WINDOW))
-        _fold_usage_analytics(
-            row, realm, state["maps"], _ANALYTICS_ALL, pricing_on, also=also,
-            pricing=pricing, priced=priced)
-
-    offset, error = _scan_usage_from(state["offset"], fold)
+    offset, error = _scan_usage_from(state["offset"], lambda row:
+        _fold_analytics_state(row, state, realm, pricing_on, pricing))
     if error is None:
         state["offset"] = offset
         state["tail"] = _log_tail_signature(offset)
@@ -8734,8 +8850,27 @@ def _analytics_window(realm, since, until, stop_at, pricing_on):
         if maps is not None:
             return maps
         # 小时层没盖住：冷路径现折一份按小时分组的窗口半，口径与小时层一致。
-        return _scan_usage_analytics_window_hours(realm, since, until, stop_at,
-                                                  pricing_on)
+        if (not getattr(_usage_scan_local, "board_window", False)
+                or until is None or _window_hour_aligned(until)):
+            return _scan_usage_analytics_window_hours(realm, since, until, stop_at,
+                                                      pricing_on)
+    if not getattr(_usage_scan_local, "board_window", False):
+        return _scan_usage_analytics_window(realm, since, until, stop_at=stop_at,
+                                            pricing_on=pricing_on)
+    with _analytics_state_lock:
+        state = _analytics_state.get(realm)
+        parts = (_usage_day_window_parts(state, since, until)
+                 if state is not None and state["offset"] == stop_at else None)
+        if parts is not None:
+            whole, edges = parts
+            maps = _new_analytics_maps()
+            for day in whole:
+                _add_analytics_window_maps(maps, day)
+    if parts is not None:
+        for lo, hi in edges:
+            _add_analytics_window_maps(maps, _scan_usage_analytics_window(
+                realm, lo, hi, stop_at=stop_at, pricing_on=pricing_on))
+        return maps
     return _scan_usage_analytics_window(realm, since, until, stop_at=stop_at,
                                         pricing_on=pricing_on)
 
@@ -8767,7 +8902,8 @@ def _scan_usage_analytics_window(realm, since, until, stop_at=None, pricing_on=N
     _, error = _scan_usage_from(
         0, fold, stop_at=stop_at,
         skip=lambda line: _line_outside_window(line, since, until),
-        skip_raw=lambda raw: _line_outside_window_bytes(raw, since, until))
+        skip_raw=lambda raw: _line_outside_window_bytes(raw, since, until),
+        bounds=(since, until))
     if error is not None:
         log("compute_usage_analytics failed: %s" % error)
     return maps
@@ -9299,8 +9435,10 @@ def _prune_day_buckets(state, days, newest_key):
     留满保留天数。被摘掉的天由查询侧按「这一天还有没有 hours」自己表达
     （见 _analytics_window_from_hours），所以这里不用另存一个 floor。
     """
-    horizon = _local_day_key(_day_key_start(newest_key)
-                             - _usage_day_keep_days() * 86400)
+    newest_at = _day_key_start(newest_key)
+    keep_days = _usage_day_keep_days()
+    horizon = _local_day_key(newest_at - max(
+        keep_days, state.get("history_days", 0)) * 86400)
     for old in [k for k in days if k < horizon]:
         del days[old]
     floor = state.get("days_floor")
@@ -9317,6 +9455,11 @@ def _prune_day_buckets(state, days, newest_key):
     if state.get("hours_keep"):
         hour_horizon = _local_day_key(_day_key_start(newest_key)
                                       - _usage_hour_keep_hours() * 3600)
+        for key, bucket in days.items():
+            if key < hour_horizon:
+                bucket.pop("hours", None)
+    if state.get("history_days"):
+        hour_horizon = _local_day_key(newest_at - keep_days * 86400)
         for key, bucket in days.items():
             if key < hour_horizon:
                 bucket.pop("hours", None)
@@ -9470,37 +9613,37 @@ def _add_analytics_models(dst, src):
             tgt[field] += stat.get(field) or 0
 
 
-def _add_analytics_window_maps(dst, src):
+def _add_analytics_window_maps(dst, src, half=_ANALYTICS_WINDOW):
     """把一份窗口形状的 analytics maps 并入另一份（日桶求和用）。
 
     日桶本身就是 _ANALYTICS_WINDOW 那一半的形状（window / window_models），
     所以这里只动这两个键；realms / last_at 照并，虽然 _merge_analytics_halves
     最终取的是 all-time 侧的值。
     """
+    stat, models = half
     _add_analytics_stat(dst["summary"], src["summary"])
     for uid, entry in src["accts"].items():
         tgt = dst["accts"].get(uid)
         if tgt is None:
             tgt = dst["accts"][uid] = {
                 "uid": uid, "nickname": uid, "realm": entry["realm"],
-                "domain": "", "window": _new_analytics_stat(),
-                "window_models": {}}
-        _add_analytics_stat(tgt["window"], entry["window"])
-        _add_analytics_models(tgt["window_models"], entry["window_models"])
+                "domain": "", stat: _new_analytics_stat(), models: {}}
+        _add_analytics_stat(tgt[stat], entry[stat])
+        _add_analytics_models(tgt[models], entry[models])
     for mid, entry in src["models"].items():
         tgt = dst["models"].get(mid)
         if tgt is None:
             tgt = dst["models"][mid] = {"model": mid,
-                                        "window": _new_analytics_stat()}
-        _add_analytics_stat(tgt["window"], entry["window"])
+                                        stat: _new_analytics_stat()}
+        _add_analytics_stat(tgt[stat], entry[stat])
     for kid, entry in src["keys"].items():
         tgt = dst["keys"].get(kid)
         if tgt is None:
             tgt = dst["keys"][kid] = {
-                "key": kid, "window": _new_analytics_stat(),
-                "window_models": {}, "realms": {}, "last_at": 0}
-        _add_analytics_stat(tgt["window"], entry["window"])
-        _add_analytics_models(tgt["window_models"], entry["window_models"])
+                "key": kid, stat: _new_analytics_stat(),
+                models: {}, "realms": {}, "last_at": 0}
+        _add_analytics_stat(tgt[stat], entry[stat])
+        _add_analytics_models(tgt[models], entry[models])
         for rr, count in entry["realms"].items():
             tgt["realms"][rr] = tgt["realms"].get(rr, 0) + count
         if entry["last_at"] > tgt["last_at"]:
@@ -9572,7 +9715,8 @@ def _scan_usage_snapshot_window_days(r, since, until, pricing_on=None):
         skip=lambda line: _line_outside_window(line, since or None,
                                                until or None),
         skip_raw=lambda raw: _line_outside_window_bytes(raw, since or None,
-                                                        until or None))
+                                                        until or None),
+        bounds=(since or None, until or None))
     if error is not None:
         log(f"usage snapshot read failed: {error}")
     snap = _empty_stats()
@@ -9623,7 +9767,8 @@ def _scan_usage_snapshot_window_hours(r, since, until, pricing_on=None):
         skip=lambda line: _line_outside_window(line, since or None,
                                                until or None),
         skip_raw=lambda raw: _line_outside_window_bytes(raw, since or None,
-                                                        until or None))
+                                                        until or None),
+        bounds=(since or None, until or None))
     if error is not None:
         log(f"usage snapshot read failed: {error}")
     snap = _empty_stats()
@@ -9654,7 +9799,8 @@ def _scan_usage_analytics_window_days(realm, since, until, stop_at=None,
     _, error = _scan_usage_from(
         0, fold, stop_at=stop_at,
         skip=lambda line: _line_outside_window(line, since, until),
-        skip_raw=lambda raw: _line_outside_window_bytes(raw, since, until))
+        skip_raw=lambda raw: _line_outside_window_bytes(raw, since, until),
+        bounds=(since, until))
     if error is not None:
         log("compute_usage_analytics failed: %s" % error)
     out = _new_analytics_maps()
@@ -9701,7 +9847,8 @@ def _scan_usage_analytics_window_hours(realm, since, until, stop_at=None,
     _, error = _scan_usage_from(
         0, fold, stop_at=stop_at,
         skip=lambda line: _line_outside_window(line, since, until),
-        skip_raw=lambda raw: _line_outside_window_bytes(raw, since, until))
+        skip_raw=lambda raw: _line_outside_window_bytes(raw, since, until),
+        bounds=(since, until))
     if error is not None:
         log("compute_usage_analytics failed: %s" % error)
     out = _new_analytics_maps()
@@ -9851,6 +9998,10 @@ def _fold_usage_series(row, r, state):
     # 分钟环放在小时桶的午夜兜底之前：兜底会 return（那一天的 hours 摘掉），
     # 而分钟环与日/小时格点无关，漏折一行就会让它的覆盖出现空洞。
     _fold_usage_series_minute(state, row, at)
+    if "hours" not in bucket:
+        if state.get("history_days") and (row.get("credit") or 0) > 0:
+            _series_credit_push(state["credits"], row, at)
+        return
     if at < bucket["at"]:
         # 本地午夜落在不存在的小时里（极少数时区的夏令时正好在午夜切换）：
         # 这一天的行放不进小时格点，把 hours 摘掉让切片对这一天整体退回扫描
@@ -9883,12 +10034,14 @@ def _usage_series_state_ready(r):
     _usage_cache_adopt_series）。
     """
     state = _series_state.get(r)
-    if state is None:
+    history = 374 if r is None and USAGE_BOARD is not None else 0
+    if state is None or state.get("history_days", 0) != history:
         state = _series_state[r] = {
             "days": {}, "days_floor": None, "max_at": 0, "credits": [],
             "minutes": {}, "minutes_from": None,
             "hits": [], "hits_overflow": False,
-            "offset": 0, "key": None, "realm": None, "tail": b""}
+            "offset": 0, "key": None, "realm": None, "tail": b"",
+            "history_days": history}
     realm = _realm_inputs()
     log_key = _usage_log_key()
     if state["key"] is None:
@@ -10019,6 +10172,10 @@ def _series_slice_minutes(state, realm, lo, hi, day_key):
             return None
     if not _days_cover(state, day_key):
         return None
+    if state.get("history_days") and cut and len(state["credits"]) >= _SERIES_CREDITS_KEEP:
+        stamps = [entry["at"] for entry in state["credits"]]
+        if min(stamps) >= lo and sum(lo <= at <= hi for at in stamps) < _SERIES_CREDITS_KEEP:
+            return None
     series = []
     for key in sorted(minutes):
         sub = minutes[key]
@@ -10338,6 +10495,431 @@ def _compute_usage_analytics_uncached(realm=None, since=None, until=None):
         # is a second view of the same spend, not a breakdown of it.
         "keys": keys_list,
     }
+
+
+USAGE_BOARD = None
+_BOARD_SCAN_BYTES = 1024 * 1024
+_ARCHIVE_ROLLUP_VERSION = 1
+_archive_rollup_lock = threading.Lock()
+
+
+def _archive_rollup_context(plain):
+    archive = [list(stamp) if stamp else None for stamp in wb_usage_io.archive_stamp(plain)]
+    realm = _realm_inputs()
+    if not any(archive) or realm is None or not _realm_fold_reproducible(realm[1]):
+        return None
+    return [_ARCHIVE_ROLLUP_VERSION, archive, _realm_inputs_key(realm),
+            [os.environ.get("TZ"), list(time.tzname), time.timezone, time.altzone],
+            [_usage_day_buckets_enabled(), _usage_day_keep_days(),
+             _usage_hour_keep_days(), _usage_hour_keep_hours()]]
+
+
+def _archive_rollup_states(pricing):
+    snap, analytics, series = [
+        {"days": {}, "days_floor": None, "hits": [], "hits_overflow": False}
+        for _ in range(3)]
+    snap.update(snap=_empty_stats(), hours_floor_at=None)
+    analytics.update(maps=_new_analytics_maps(), max_at=0, hours_keep=True)
+    series.update(max_at=0, credits=[], minutes={}, history_days=374)
+    for state in (snap, analytics):
+        state["pricing"] = _pricing_record_new() if pricing[0] else None
+    return snap, analytics, series
+
+
+def _archive_rollup_valid(value, context, pricing):
+    if not isinstance(value, dict) or value.get("context") != context:
+        return False
+    states = value.get("states")
+    if not isinstance(states, list) or len(states) != 3:
+        return False
+    if not all(isinstance(state, dict) and "days_floor" in state and _usage_cache_hits_ok(
+            state.get("hits"), state.get("hits_overflow")) for state in states):
+        return False
+    snap, analytics, series = states
+    return (
+        _usage_cache_snapshot_ok(snap.get("snap"))
+        and _usage_cache_analytics_ok(analytics.get("maps"))
+        and _usage_cache_days_ok(snap.get("days"), snap.get("days_floor"),
+                                 _usage_cache_snapshot_ok)
+        and _usage_cache_days_ok(analytics.get("days"), analytics.get("days_floor"),
+                                 _usage_cache_analytics_day_ok)
+        and _usage_cache_days_ok(series.get("days"), series.get("days_floor"),
+                                 _usage_cache_series_bucket_ok)
+        and "hours_floor_at" in snap
+        and (snap["hours_floor_at"] is None or _usage_cache_number(snap["hours_floor_at"]))
+        and _usage_cache_number(analytics.get("max_at"))
+        and _usage_cache_number(series.get("max_at"))
+        and isinstance(series.get("minutes"), list)
+        and _usage_cache_series_minutes_ok(series["minutes"])
+        and _usage_cache_credits_ok(series.get("credits"))
+        and all("pricing" in state and _pricing_used_unchanged(state["pricing"], pricing)
+                for state in (snap, analytics)))
+
+
+def _get_archive_rollup(segment, stop, progress=None):
+    start, size, _, _, plain = segment
+    with _archive_rollup_lock:
+        if stop.is_set():
+            return None
+        context = _archive_rollup_context(plain)
+        pricing = _pricing_inputs()
+        if context is None or pricing is None:
+            return None
+        cached = wb_usage_io.read_rollup(plain)
+        if _archive_rollup_valid(cached, context, pricing):
+            return cached["states"]
+        snap, analytics, series = _archive_rollup_states(pricing)
+
+        def fold(row):
+            _fold_snapshot_state(row, snap, None, pricing[0], pricing)
+            _fold_analytics_state(row, analytics, None, pricing[0], pricing)
+            _fold_usage_series(row, None, series)
+
+        end, offset = start + size, start
+        while offset < end and not stop.is_set():
+            cap = wb_usage_io.scan_boundary(USAGE_LOG, offset, end, _BOARD_SCAN_BYTES)
+            advanced, error = _read_usage_rows(offset, fold, cap)
+            if error is not None or advanced <= offset:
+                return None
+            offset = advanced
+            if progress is not None:
+                progress(offset)
+            stop.wait(.005)
+        if offset != end or context != _archive_rollup_context(plain):
+            return None
+        for state in (snap, analytics):
+            _pricing_record_close(state["pricing"], pricing)
+        if not _pricing_unchanged(pricing, _pricing_inputs()):
+            return None
+        _prune_series_minutes(series)
+        series["minutes"] = _usage_cache_minutes_copy(series["minutes"])
+        value = {"context": context, "states": [snap, analytics, series]}
+        try:
+            wb_usage_io.write_rollup(plain, value)
+        except (OSError, ValueError) as exc:
+            log("usage archive rollup write failed: %s" % exc, level="WARN", tag="usage")
+        return value["states"]
+
+
+def _merge_rollup_price(dst, src):
+    if src is None or dst is None:
+        return
+    dst["refs"].update(src["refs"])
+    stamps = [at for at in (dst["timeline_at"], src["timeline_at"]) if at is not None]
+    dst["timeline_at"] = max(stamps) if stamps else None
+    for key in ("timeline_models", "unresolved"):
+        dst[key] = sorted(set(dst[key]) | set(src[key]))
+    dst["backfilled"] |= src["backfilled"]
+    dst["builtin"] = src["builtin"] or dst["builtin"]
+
+
+def _add_series_totals(dst, src):
+    for field in _USAGE_CACHE_SERIES_NUMBERS:
+        if field != "at":
+            dst[field] += src[field]
+
+
+def _merge_rollup_days(dst, src, add):
+    floors = [v for v in (dst["days_floor"], src["days_floor"]) if v is not None]
+    floor = max(floors) if floors else None
+    dst["days_floor"] = floor
+    days = dst["days"]
+    for key, bucket in src["days"].items():
+        if floor is not None and key < floor:
+            continue
+        if key not in days:
+            days[key] = bucket
+            continue
+        current = days[key]
+        add(current, bucket)
+        left, right = current.get("hours"), bucket.get("hours")
+        if left is not None and right is not None:
+            for hour, sub in right.items():
+                if hour in left:
+                    add(left[hour], sub)
+                else:
+                    left[hour] = sub
+        elif "hours_floor_at" in dst:
+            current["hours"] = None
+        else:
+            current.pop("hours", None)
+    for key in list(days):
+        if floor is not None and key < floor:
+            del days[key]
+    if days:
+        _prune_day_buckets(dst, days, max(days))
+    hits = dst["hits"] + src["hits"]
+    dst["hits_overflow"] |= src["hits_overflow"] or len(hits) > _CLOSED_WINDOW_HITS_MAX
+    dst["hits"] = hits[:_CLOSED_WINDOW_HITS_MAX]
+
+
+def _merge_archive_rollup(name, dst, src, pricing):
+    if name == "snapshot":
+        _add_usage_snapshot(dst["snap"], src["snap"])
+        floors = [v for v in (dst["hours_floor_at"], src["hours_floor_at"]) if v is not None]
+        dst["hours_floor_at"] = max(floors) if floors else None
+        _merge_rollup_days(dst, src, _add_usage_snapshot)
+    elif name == "analytics":
+        _add_analytics_window_maps(dst["maps"], src["maps"], _ANALYTICS_ALL)
+        dst["max_at"] = max(dst["max_at"], src["max_at"])
+        _merge_rollup_days(dst, src, _add_analytics_window_maps)
+    else:
+        dst["max_at"] = max(dst["max_at"], src["max_at"])
+        _merge_rollup_days(dst, src, _add_series_totals)
+        dst["credits"] = sorted(
+            dst["credits"] + src["credits"], key=lambda row: -row["at"])[:_SERIES_CREDITS_KEEP]
+        for key, bucket in _usage_cache_minutes_state(src["minutes"]).items():
+            if key in dst["minutes"]:
+                _add_series_totals(dst["minutes"][key], bucket)
+            else:
+                dst["minutes"][key] = bucket
+        _prune_series_minutes(dst)
+        return
+    _merge_rollup_price(dst["pricing"], src["pricing"])
+    _pricing_record_close(dst["pricing"], pricing)
+
+
+def _apply_archive_rollup(readers, segment, chunks):
+    start, size = segment[:2]
+    end = start + size
+    pricing = _pricing_inputs()
+    realm = _realm_inputs()
+    if pricing is None or not all(
+            _pricing_used_unchanged(state["pricing"], pricing) for state in chunks[:2]):
+        return False
+    tail = _log_tail_signature(end)
+    if tail is None:
+        return False
+    advanced = False
+    for (name, lock, states, _), chunk in zip(readers, chunks):
+        with lock:
+            state = states.get(None)
+            if state is None or state["offset"] != start or state["realm"] != realm:
+                continue
+            if name != "series" and not _pricing_used_unchanged(state["pricing"], pricing):
+                continue
+            _merge_archive_rollup(name, state, chunk, pricing)
+            state.update(offset=end, tail=tail)
+            advanced = True
+    return advanced
+
+
+def _warm_usage_board(stop, progress):
+    """Advance the three dashboard folds together, sharing each parsed batch."""
+    target = wb_usage_io.log_key(USAGE_LOG)[0]
+    readers = (
+        ("snapshot", _usage_snap_state_lock, _usage_snap_state, _usage_snap_state_ready),
+        ("analytics", _analytics_state_lock, _analytics_state, _analytics_state_ready),
+        ("series", _series_state_lock, _series_state, _usage_series_state_ready),
+    )
+    pricing = wb_pricing.pricing_enabled()
+    segments = (wb_usage_io.sealed_segments(USAGE_LOG)
+                if USAGE_BOARD is not None and _usage_cache_enabled() else ())
+    starts = [segment[0] for segment in segments]
+    if segments:
+        # Adopt existing checkpoints before deciding which sealed segment is
+        # next. A zero ceiling lets all three readers validate without I/O
+        # past their current offsets.
+        _usage_scan_local.batch = 0, {}, {}
+        try:
+            for name, lock, _, advance in readers:
+                with lock:
+                    advance(None) if name == "series" else advance(None, pricing)
+        finally:
+            del _usage_scan_local.batch
+    previous = None
+    next_checkpoint = time.monotonic() + 30
+    while not stop.is_set():
+        offsets = []
+        for _, lock, states, _ in readers:
+            with lock:
+                offsets.append(states.get(None, {}).get("offset", 0))
+        start = min(offsets)
+        progress(min(start, target), target)
+        if offsets == previous:
+            # An unfinished line is left for the next append.
+            return
+        previous = offsets
+        index = bisect.bisect_left(starts, start)
+        if index < len(starts):
+            if starts[index] == start and start + segments[index][1] <= target:
+                rollup = _get_archive_rollup(
+                    segments[index], stop, lambda current: progress(current, target))
+                if rollup is not None and _apply_archive_rollup(readers, segments[index], rollup):
+                    continue
+        cap = wb_usage_io.scan_boundary(USAGE_LOG, min(start, target), target,
+                                        _BOARD_SCAN_BYTES)
+        if index < len(starts) and starts[index] > start:
+            cap = min(cap, starts[index])
+        completed = []
+        _usage_scan_local.batch = cap, {}, {}
+        try:
+            for name, lock, states, advance in readers:
+                with lock:
+                    if name == "series":
+                        _, offset, error = advance(None)
+                    else:
+                        _, offset, error = advance(None, pricing)
+                    if error is not None:
+                        states.pop(None, None)
+                        raise error
+                completed.append(offset)
+        finally:
+            del _usage_scan_local.batch
+        done = min(completed) >= target
+        if done or time.monotonic() >= next_checkpoint or previous == completed:
+            for reader, offset in zip(readers, completed):
+                _usage_cache_maybe_save(reader[0], offset)
+            next_checkpoint = time.monotonic() + 30
+        if done:
+            progress(target, target)
+            return
+        stop.wait(0.01)
+
+
+def _maintain_usage_archive(stop):
+    limit = wb_usage_io.rotation_bytes()
+    wb_usage_io.rotate(USAGE_LOG, limit)
+    wb_usage_io.maintain_archive(USAGE_LOG, limit, stop)
+    if _usage_cache_enabled() and not stop.is_set():
+        for segment in reversed(wb_usage_io.sealed_segments(USAGE_LOG)):
+            plain = segment[4]
+            if not os.path.isfile(plain + ".rollup.gz"):
+                _get_archive_rollup(segment, stop)
+                break
+
+
+def _board_series(lo, hi, step):
+    """Reuse full days, with exact row scans for the two edges."""
+    parts = None
+    if step in (3600, 86400):
+        with _series_state_lock:
+            state = _series_state.get(None)
+            if state:
+                parts = _usage_day_window_parts(state, lo, hi)
+            if parts:
+                days, edges = parts
+                origin = _local_midnight(lo) if step == 86400 else _local_hour_start(lo)
+                if any((day["at"] - origin) % step for day in days):
+                    parts = None
+                elif step == 86400:
+                    entries = [_series_output_bucket(day) for day in days]
+                elif all("hours" in day for day in days):
+                    entries = [_series_output_bucket(hour) for day in days
+                               for hour in day["hours"].values()]
+                else:
+                    parts = None
+    if parts is None:
+        out = _usage_timeseries_uncached(None, lo, hi, step)
+        out.pop("credits", None)
+        return out
+    for start, end in edges:
+        edge = _usage_timeseries_scan(None, start, end, step)
+        entries.extend(edge["series"])
+    if (len({item["at"] for item in entries}) != len(entries)
+            or any((item["at"] - origin) % step for item in entries)):
+        out = _usage_timeseries_scan(None, lo, hi, step)
+        out.pop("credits", None)
+        return out
+    return {"series": sorted(entries, key=lambda item: item["at"]),
+            "since": lo, "until": hi, "bucket_seconds": step}
+
+
+def _board_heat(now):
+    lo, hi = _local_midnight(now, 372), _local_midnight(now, -1)
+    with _series_state_lock:
+        state = _series_state.get(None)
+        if state and _days_cover(state, _local_day_key(lo)):
+            return {"series": [{"at": day["at"], "requests": day["requests"],
+                                "total_tokens": day["total_tokens"]}
+                               for day in state["days"].values() if lo <= day["at"] < hi]}
+    return _board_series(lo, math.nextafter(hi, -math.inf), 86400)
+
+
+def _board_previous(period, start, now, step):
+    if period in ("today", "week", "month", "d3", "d30"):
+        if period == "month":
+            prev_start = _local_midnight(start - 1)
+            prev_start = _local_midnight(prev_start, time.localtime(prev_start).tm_mday - 1)
+        elif period in ("today", "week"):
+            prev_start = _local_midnight(start, 7 if period == "week" else 1)
+        else:
+            prev_start = start - (now - start)
+        prev_end = min(start, prev_start + (now - start))
+        rows = _board_series(prev_start, prev_end, step)["series"]
+        fields = {"tok": "total_tokens", "req": "requests", "cred": "credit",
+                  "prompt": "prompt_tokens", "cached": "cached_tokens"}
+        result = {name: sum(row.get(field, 0) for row in rows)
+                  for name, field in fields.items()}
+        if result["tok"] or result["req"]:
+            return result
+    return None
+
+
+def _build_usage_board(key, matrix, stop, progress):
+    period, since, until = key
+    _warm_usage_board(stop, progress)
+    if stop.is_set():
+        return None, None
+    now = time.time()
+    if period in ("d3", "d30"):
+        lo, hi = now - (3 if period == "d3" else 30) * 86400, now
+    else:
+        lo, hi = range_window(period, since, until)
+    shi = now if hi is None else hi
+    slo = lo if lo is not None else _local_midnight(now, 365) if period == "all" else shi - 86400
+    span = shi - slo
+    step = 60 if span <= 6 * 3600 else 3600 if span <= 14 * 86400 else 86400
+    _usage_scan_local.board_window = True
+    try:
+        analytics = _compute_usage_analytics_uncached(since=lo, until=hi)
+    finally:
+        del _usage_scan_local.board_window
+    core = {
+        "analytics": analytics,
+        "series": _board_series(slo, shi, step),
+    }
+    if not matrix:
+        return core, None
+    return core, {"perf": perf_stats(realm="all"), "heat": _board_heat(now),
+                  "previous": _board_previous(period, slo, now, step)}
+
+
+def _preview_usage_today(key, stop):
+    if key[0] != "today":
+        return None
+    now = time.time()
+    lo = _local_midnight(now)
+    summary = _new_analytics_stat()
+    pricing_on = wb_pricing.pricing_enabled()
+    pricing = _pricing_inputs(pricing_on)
+
+    def fold(row):
+        if stop.is_set():
+            raise InterruptedError("usage preview stopped")
+        at = row.get("at") or 0
+        outcome = row_outcome(row)
+        if lo <= at <= now and outcome != "client_aborted":
+            cost = _row_cost(row, pricing, pricing_on)
+            _feed_analytics(summary, _analytics_row_values(row), outcome != "completed",
+                            cost["cny"] if cost["known"] else 0)
+
+    _, error = _scan_usage_from(
+        0, fold, bounds=(lo, now),
+        skip_raw=lambda raw: _line_outside_window_bytes(raw, lo, now))
+    if error is not None:
+        raise error
+    return {"summary": {"window": _finalize_analytics_stat(summary)},
+            "usd_cny": wb_pricing.usd_cny(), "updated_at": now}
+
+
+def _start_usage_board():
+    board = UsageBoard(lambda: wb_usage_io.log_key(USAGE_LOG), _maintain_usage_archive,
+                       _build_usage_board, lambda exc: log(
+                           "usage dashboard: %s" % exc, level="WARN", tag="usage"),
+                       preview=_preview_usage_today)
+    board.start()
+    return board
 
 
 # ---------------------------------------------------------------------------
@@ -11565,7 +12147,7 @@ def _usage_cache_adopt_analytics(realm, state, log_key, pricing, realm_inputs):
 def _usage_cache_adopt_series(r, state, log_key, realm_inputs):
     """时间序列状态的采用；这一份只有 realm 指纹（折叠不算价）。"""
     entry = _usage_cache_take("series", r)
-    if entry is None:
+    if entry is None or entry.get("history_days", 0) != state.get("history_days", 0):
         return False
     position = _usage_cache_position_ok(entry, log_key)
     if position is None:
@@ -11808,6 +12390,7 @@ def _usage_cache_series_entry(realm, state):
             "key": list(state["key"] or (0, 0, 0)), "tail": tail.hex(),
             "realm_inputs": realm_key,
             "days": _usage_cache_days_copy(state.get("days"), _copy_series_day),
+            "history_days": state.get("history_days", 0),
             "days_floor": state.get("days_floor"),
             "max_at": state.get("max_at") or 0,
             "credits": [dict(item) for item in (state.get("credits") or [])],
@@ -12261,7 +12844,7 @@ def runtime_settings_view():
         "accounts_dir": ACCOUNTS_DIR,
         "usage_dir": USAGE_DIR,
         "settings_file": wb_settings.settings_path(ACCOUNTS_DIR),
-        "version": "2.1.3",
+        "version": "2.1.7",
     }
 def current_account():
     """Account used for display purposes (health / usage summaries)."""
@@ -22114,7 +22697,7 @@ class Handler(BaseHTTPRequestHandler):
             super().finish()
         except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
             pass
-    server_version = "wb-proxy/2.1.3"
+    server_version = "wb-proxy/2.1.7"
     def log_message(self, fmt, *args):
         # 静默过滤前端看板高频定时心跳的正常 200 GET 请求（/logs、/usage、/accounts 轮询等）
         # 避免自增死循环刷屏与日志污染。遇 4xx/5xx 异常或所有非 GET 业务操作依然如实记录。
@@ -22903,7 +23486,7 @@ class Handler(BaseHTTPRequestHandler):
             "/v1/models", "/models", "/v1/balance-summary",
             "/usage", "/v1/usage", "/usage/recent", "/usage/analytics",
             "/usage/by-account", "/usage/remaining", "/usage/perf",
-            "/usage/timeseries", "/activity/history",
+            "/usage/timeseries", "/usage/board", "/activity/history",
         )
         if is_media_route and not wb_pool_scope.entry_allows(
                 wb_pool_scope.SCOPE_MEDIA):
@@ -22971,6 +23554,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._get_accounts_login_poll(query)
         if path == "/usage/analytics":
             return self._get_usage_analytics(query)
+        if path == "/usage/board":
+            return self._get_usage_board(query)
         if path == "/usage/by-account":
             return self._get_usage_by_account()
         if path == "/usage/remaining":
@@ -23578,10 +24163,14 @@ class Handler(BaseHTTPRequestHandler):
         # 就是空字符串，省得前端还要区分「没这个参数」和「参数为空」。
         def _pick(name):
             return ((query.get(name) or [""])[0] or "").strip() or None
+        args = (limit, req_realm, page, _pick("account"), _pick("model"),
+                _pick("key"), _pick("outcome"))
+        if query.get("watch") == ["1"]:
+            return self._json_panel(200, _versioned_recent_reply(
+                args, (query.get("rev") or [None])[0]))
         return self._json_panel(200, recent_usage(
             limit, realm=req_realm, page=page,
-            account=_pick("account"), model=_pick("model"),
-            key=_pick("key"), outcome=_pick("outcome")))
+            account=args[3], model=args[4], key=args[5], outcome=args[6]))
 
     def _get_activity_history(self, query):
         """账号每日活动的结构化历史（issue #34）。只读，供面板的签到记录用。
@@ -23935,6 +24524,27 @@ class Handler(BaseHTTPRequestHandler):
                                             since=req_since, until=req_until),
             lambda: usage_analytics_etag(realm=req_realm, range=req_range,
                                          since=req_since, until=req_until))
+
+    def _get_usage_board(self, query):
+        if not self._authorized():
+            return
+        if USAGE_BOARD is None:
+            return self._error(503, "Usage dashboard is starting", "server_error")
+        period, since, until = range_query(query)
+        period = period if period in ("today", "d3", "week", "month", "d30", "all", "custom") else "today"
+        if period != "custom":
+            since = until = None
+        else:
+            since, until = range_window(period, since, until)
+            if any(value is not None and (not math.isfinite(value) or value > 253402300799)
+                   for value in (since, until)):
+                return self._error(400, "Invalid usage range", "invalid_request_error")
+        closed = period == "custom" and until is not None and until <= time.time()
+        return self._json_panel(200, USAGE_BOARD.request(
+            (period, since, until), (query.get("rev") or [None])[0],
+            (query.get("matrix_rev") or [None])[0],
+            preview_revision=(query.get("preview_rev") or [None])[0],
+            closed=closed, force=query.get("refresh") == ["1"]))
 
     def _get_usage_by_account(self):
         if not self._authorized():
@@ -29803,6 +30413,7 @@ class GatewayServer(ThreadingHTTPServer):
     request_queue_size = 128
 
 def _serve_forever(args):
+    global USAGE_BOARD
     try:
         server = GatewayServer((args.host, args.port), Handler)
     except OSError as exc:
@@ -29835,10 +30446,14 @@ def _serve_forever(args):
     # stores a raw pointer, so a collected callback would crash on close.
     _ctrl_handler = install_console_close_handler()
     try:
+        USAGE_BOARD = _start_usage_board()
         server.serve_forever()
     except KeyboardInterrupt:
         log("bye")
     finally:
+        if USAGE_BOARD is not None:
+            USAGE_BOARD.close()
+            USAGE_BOARD = None
         try:
             server.server_close()
         except Exception:

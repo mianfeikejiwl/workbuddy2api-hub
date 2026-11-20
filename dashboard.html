@@ -2321,6 +2321,13 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
   var ATTRS = ['title', 'placeholder', 'aria-label', 'data-label', 'alt'];
   var SKIP = {SCRIPT: 1, STYLE: 1, TEXTAREA: 1, NOSCRIPT: 1};
   var DICT = {
+    '暂无请求记录': 'No requests yet',
+    '今日已更新，累计与历史计算中': 'Today is up to date. Calculating totals and history',
+    '正在后台计算用量': 'Calculating usage in the background',
+    '统计更新于': 'Statistics updated at',
+    '统计更新失败，显示上次结果': 'Update failed. Showing the previous results',
+    '用量统计失败，请刷新重试': 'Usage calculation failed. Refresh to retry',
+    '无法读取用量统计': 'Could not load usage statistics',
     '媒体': 'Media',
     '全部号池': 'All pools',
     '文本号池': 'Text pool',
@@ -4043,6 +4050,13 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     '猫猫正在旅行途中，请稍后再来查看！': 'The cat is still travelling; check again later!'
   };
   var HANT_PHRASES = {
+    "暂无请求记录": "暫無請求記錄",
+    "今日已更新，累计与历史计算中": "今日已更新，累計與歷史計算中",
+    "正在后台计算用量": "正在背景計算用量",
+    "统计更新于": "統計更新於",
+    "统计更新失败，显示上次结果": "統計更新失敗，顯示上次結果",
+    "用量统计失败，请刷新重试": "用量統計失敗，請重新整理後重試",
+    "无法读取用量统计": "無法讀取用量統計",
     "每日任务": "每日任務",
     "优先 DeepSeek Flash，失败切免费模型": "優先 DeepSeek Flash，失敗切免費模型",
     "已启用 · 先 Flash 后免费": "已啟用 · 先 Flash 後免費",
@@ -5839,7 +5853,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       <span class="console-wordmark">WorkBuddy<span>API HUB</span></span>
     </div>
     <div class="console-service"><span id="consoleStatusSlot"></span><span>本地网关</span><span class="console-port" id="consolePort">8788</span></div>
-    <a class="gh-link" href="https://github.com/ardeyouxipianyi/workbuddy2api-hub" target="_blank" rel="noopener noreferrer"
+    <a class="gh-link" href="https://github.com/niyouqianma/workbuddy2api-hub" target="_blank" rel="noopener noreferrer"
        title="查看 WorkBuddy 项目仓库" aria-label="WorkBuddy 项目仓库">
       <svg viewBox="0 0 16 16" aria-hidden="true">
         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
@@ -5999,7 +6013,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       </button>
     </nav>
     <div class="next-sidebar-foot">
-      <a class="next-side-link" href="https://github.com/ardeyouxipianyi/workbuddy2api-hub" target="_blank" rel="noopener noreferrer">
+      <a class="next-side-link" href="https://github.com/niyouqianma/workbuddy2api-hub" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         WorkBuddy 仓库
       </a>
@@ -6766,7 +6780,14 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       <button data-range="month">本月</button>
       <button data-range="d30">近 30 天</button>
       <button data-range="all">全部</button>
+      <button data-range="custom">自定义</button>
     </div>
+    <div id="rangeCustomBox" hidden>
+      <label>开始 <input id="rangeCustomSince" type="datetime-local"></label>
+      <label>结束 <input id="rangeCustomUntil" type="datetime-local"></label>
+    </div>
+    <button id="usageBoardRefresh" type="button" class="sec mini">刷新用量</button>
+    <span id="usageBoardStatus" class="pagesub" role="status"></span>
   </div>
 
   <!-- ====================== ① KPI（B 版：大卡 + 大面积 sparkline + 环形卡） ====================== -->
@@ -15413,19 +15434,39 @@ function renderConsoleInsights(rows, accts){
 /* ------------------------------- dashboard ------------------------------ */
 let REFRESH_RUNNING = false;
 let REFRESH_QUEUED = false;
+let REFRESH_QUEUED_POLL = true;
 let REFRESH_GEN = 0;
-async function refresh(){
+const RECENT_SNAPSHOTS = new Map();
+async function recentSnapshot(url, hold){
+  const cached = RECENT_SNAPSHOTS.get(url);
+  if(hold && cached) return cached;
+  const data = await getJSON(url + '&watch=1' + (cached && cached.revision
+    ? '&rev=' + encodeURIComponent(cached.revision) : ''));
+  if(data.unchanged && cached) return cached;
+  RECENT_SNAPSHOTS.delete(url);
+  RECENT_SNAPSHOTS.set(url, data);
+  if(RECENT_SNAPSHOTS.size > 12) RECENT_SNAPSHOTS.delete(RECENT_SNAPSHOTS.keys().next().value);
+  return data;
+}
+async function refresh(polled = false){
   // 5 秒轮询。撞上正在飞的那一轮时**排队补跑**，而不是直接丢掉：早先的实现是
   // `if(REFRESH_BUSY) return;`，切区域/切账号那一下如果正好撞上轮询在飞，这次
   // 刷新就没了下文，只能干等下一个 5 秒周期——"点了要过几秒才变"就是这么来的。
   REFRESH_GEN++;
-  if(REFRESH_RUNNING){ REFRESH_QUEUED = true; return; }
+  if(REFRESH_RUNNING){
+    REFRESH_QUEUED_POLL = (!REFRESH_QUEUED || REFRESH_QUEUED_POLL) && polled === true;
+    REFRESH_QUEUED = true;
+    return;
+  }
   REFRESH_RUNNING = true;
   const gen = REFRESH_GEN;
-  try { await refreshInner(gen); }
+  try { await refreshInner(gen, polled === true); }
   finally {
     REFRESH_RUNNING = false;
-    if(REFRESH_QUEUED){ REFRESH_QUEUED = false; refresh(); }
+    if(REFRESH_QUEUED){
+      REFRESH_QUEUED = false;
+      refresh(REFRESH_QUEUED_POLL);
+    }
   }
 }
 // 展示货币切换后，把带费用的视图就地重画：各接口有服务端 TTL 缓存，
@@ -15433,18 +15474,16 @@ async function refresh(){
 function refreshAllCostViews(){
   refresh();
   if(currentMainTab === 'analytics'){
+    if(window.wbaRenderCost) window.wbaRenderCost();
     loadAnalytics();
-    loadAnalyticsMatrix();
   }
 }
-async function refreshInner(gen){
+async function refreshInner(gen, polled){
   let usage, recent, perf;
   try{
     [usage, recent, perf] = await Promise.all([
       getJSON('/usage?realm=' + encodeURIComponent(window.VIEW_REALM), POLL_READ),
-      // /usage/recent 不在这里改成可校验：它没有服务端缓存，每次新请求都进榜，
-      // 响应体每轮都在变，服务端也就没有稳定的校验符可发——照旧整份重取。
-      getJSON(recentUrl()),
+      recentSnapshot(recentUrl(), polled && RECENT_PAGE > 1),
       getJSON('/usage/perf?realm=' + encodeURIComponent(window.VIEW_REALM), POLL_READ),
     ]);
     // 取数期间又发起了更新的一轮（例如刚切了区域），这批结果已经过期，
@@ -16080,6 +16119,9 @@ async function startDashboard(){
   // 但新壳每次都按拆分布局渲染，避免账号区被搬回总览。
   if(window.__NEXT_UI__) applyAccountsTabLayout(true);
   await initRealm();
+  const initialTab = MAIN_TABS.includes(window.__MAIN_TAB__)
+    ? window.__MAIN_TAB__ : (window.__NEXT_UI__ ? 'overview' : 'gateway');
+  if(initialTab === 'analytics') switchMainTab(initialTab);
   // 成长任务那条走上游、约 2 秒，只服务「任务与福利」页，而且它自己渲染。原来
   // 它在这一批 Promise.all 里，switchMainTab 因此被押到它后面——落在数据看板
   // 页签时，KPI 要等这两秒过去才开始发 /usage/analytics。这里只把它摘出来让它
@@ -16096,15 +16138,13 @@ async function startDashboard(){
   ]).catch(() => {});
   await Promise.all([
     loadAccounts(false, {deferActivity: true}),
-    refresh(),
+    initialTab === 'analytics' ? Promise.resolve() : refresh(),
   ]);
   secondary.catch(() => {});
   updateRecentLimitButtons();
   // The head script already resolved this before first paint; re-apply it
   // here so the data loaders for the active page actually run.
-  switchMainTab(MAIN_TABS.includes(window.__MAIN_TAB__)
-    ? window.__MAIN_TAB__
-    : (window.__NEXT_UI__ ? 'overview' : 'gateway'));
+  if(initialTab !== 'analytics') switchMainTab(initialTab);
   // 首屏把数据表接上排序：静态标记里就有的表不会被任何 loader 触发 render，
   // 轮询那条兜底要等 5 秒才轮到它。
   applyAllTableSorts();
@@ -16122,7 +16162,12 @@ async function startDashboard(){
     // 每 5 秒在任何页面都跑，顺带把页面上的数据表接上排序（见
     // applyAllTableSorts）：表本来就是 5 秒重画一次，扫描跟同一个节奏走，新加
     // 一张表不必在它的 render 函数里再写一行，下一轮自己就接上了。
-    setInterval(() => { if(!document.hidden){ refresh(); applyAllTableSorts(); } }, 5000),
+    setInterval(() => {
+      if(!document.hidden){
+        if(currentMainTab !== 'analytics') refresh(true);
+        applyAllTableSorts();
+      }
+    }, 5000),
     setInterval(() => { if(!document.hidden) loadSchedulerStatus(); }, 30000),
     // 账号轮询只在显示账号数据的页签上跑（见 accountsTabActive）。
     setInterval(() => { if(!document.hidden && accountsTabActive()) loadAccounts(true); }, 15000),
@@ -16133,7 +16178,7 @@ async function startDashboard(){
     // 的那一轮会排队补跑），所以不会与刚跑完的一轮重复。
     document.addEventListener('visibilitychange', () => {
       if(document.hidden || !PANEL_READY) return;
-      refresh();
+      if(currentMainTab !== 'analytics') refresh(true);
       if(accountsTabActive()) loadAccounts(true);
       loadSchedulerStatus();
       if(currentMainTab === 'analytics'){ loadAnalytics(); loadAnalyticsMatrix(); }
@@ -23267,50 +23312,6 @@ const state = {
 };
 let prevSummary = null; /* B 版：上一等长周期汇总（环比） */
 
-/* ---------- B 版：环比 / sparkline / 环形卡 / 活动流 ---------- */
-function prevRange(untilAt){
-  // 环比窗口的上界同样来自调用方：轮询时与 rangeParams 共用同一个量化时刻，
-  // 否则 /usage/timeseries?…&until=… 这一条照样每轮都换 URL。
-  const now = (untilAt === undefined || untilAt === null) ? Math.floor(Date.now() / 1000) : untilAt;
-  if (state.range === 'today'){
-    const d = new Date(); d.setHours(0,0,0,0);
-    const startToday = Math.floor(d.getTime() / 1000);
-    const span = now - startToday;
-    return [startToday - 86400, startToday - 86400 + span];
-  }
-  if (state.range === 'week'){
-    const dowMon = (new Date().getDay() + 6) % 7;
-    const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - dowMon);
-    const startWeek = Math.floor(d.getTime() / 1000);
-    const span = now - startWeek;
-    return [startWeek - 7 * 86400, startWeek - 7 * 86400 + span];
-  }
-  if (state.range === 'month'){
-    const d = new Date();
-    const startMonth = Math.floor(new Date(d.getFullYear(), d.getMonth(), 1, 0,0,0).getTime() / 1000);
-    const span = now - startMonth;
-    const startPrev = Math.floor(new Date(d.getFullYear(), d.getMonth() - 1, 1, 0,0,0).getTime() / 1000);
-    return [startPrev, startPrev + span];
-  }
-  if (state.range === 'd3')  return [now - 6 * 86400, now - 3 * 86400];
-  if (state.range === 'd30') return [now - 60 * 86400, now - 30 * 86400];
-  return null;
-}
-async function loadPrevSummary(untilAt){
-  const pr = prevRange(untilAt);
-  if (!pr) return null;
-  try{
-    const p = await api(`/usage/timeseries?realm=all&range=custom&since=${pr[0]}&until=${pr[1]}`);
-    const t = (p.series || []).reduce((a, b) => ({
-      tok:    a.tok    + (b.total_tokens   || 0),
-      req:    a.req    + (b.requests       || 0),
-      cred:   a.cred   + (b.credit         || 0),
-      cached: a.cached + (b.cached_tokens  || 0),
-      prompt: a.prompt + (b.prompt_tokens  || 0),
-    }), {tok:0, req:0, cred:0, cached:0, prompt:0});
-    return (t.req || t.tok) ? t : null;
-  }catch(e){ return null; }
-}
 function deltaBadge(cur, prev){
   if (prev == null || !isFinite(prev) || prev === 0 || cur == null) return '';
   const d = (cur - prev) / Math.abs(prev) * 100;
@@ -23371,12 +23372,32 @@ function recentStamp(iso){
   const today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
   return s.slice(0, 10) === today ? time : s.slice(5, 16);
 }
+let recentListRevision = '';
+let recentListRows = [];
+const recentListKeys = new WeakMap();
 async function loadRecent(){
   try{
-    const r = await api('/usage/recent?limit=12');
-    const rows = r.rows || [];
-    $('recentMeta').textContent = `共 ${fmtCompact(r.total || 0)} 条记录`;
-    $('recentList').innerHTML = rows.map(x => {
+    const r = await api('/usage/recent?limit=12&watch=1&rev=' + recentListRevision, {});
+    const list = $('recentList');
+    if(!r.unchanged){
+      recentListRevision = r.revision || '';
+      recentListRows = r.rows || [];
+      $('recentMeta').textContent = `共 ${fmtCompact(r.total || 0)} 条记录`;
+    }
+    if(!recentListRows.length){
+      if(!r.unchanged) list.innerHTML = '<div class="empty">暂无请求记录</div>';
+      return;
+    }
+    const previous = new Map();
+    for(const node of list.children){
+      const key = recentListKeys.get(node);
+      if(key) {
+        if(!previous.has(key)) previous.set(key, []);
+        previous.get(key).push(node);
+      }
+    }
+    const displayed = new Set();
+    recentListRows.forEach((x, i) => {
       const ok = x.outcome === 'completed';
       const nm = nicknameOf(x.account);
       // 失败行原来只有一个 [failed] 标签；把 HTTP 码带上、上游原话挂进悬停气泡，
@@ -23387,32 +23408,23 @@ async function loadRecent(){
       const tag = ok ? ''
         : ' <span class="err"' + (whyText ? ' data-tip="' + esc(whyText) + '"' : '')
           + '>[' + esc(x.outcome || '失败') + (code ? ' ' + esc(code) : '') + ']</span>';
-      return `<div class="recent-item">
-        <span class="t">${recentStamp(x.iso)}</span>
-        <span class="m"><b>${x.model || ''}</b> → ${nm.length > 16 ? nm.slice(0, 16) + '…' : nm}${tag}</span>
-        <span class="r"><b>${fmtCompact(x.total_tokens || 0)}</b> tok · ${((x.elapsed_ms || 0) / 1000).toFixed(1)}s</span>
-      </div>`;
-    }).join('') || '<div class="empty">暂无请求记录</div>';
+      const html = `<span class="t">${esc(recentStamp(x.iso))}</span>
+        <span class="m"><b>${esc(x.model || '')}</b> → ${esc(nm.length > 16 ? nm.slice(0, 16) + '…' : nm)}${tag}</span>
+        <span class="r"><b>${fmtCompact(x.total_tokens || 0)}</b> tok · ${((x.elapsed_ms || 0) / 1000).toFixed(1)}s</span>`;
+      let node = previous.get(html)?.shift();
+      if(!node){
+        node = document.createElement('div');
+        node.className = 'recent-item';
+        node.innerHTML = html;
+        recentListKeys.set(node, html);
+      }
+      if(list.children[i] !== node) list.insertBefore(node, list.children[i] || null);
+      displayed.add(node);
+    });
+    for(const node of Array.from(list.children)){
+      if(!displayed.has(node)) list.removeChild(node);
+    }
   }catch(e){ console.error('recent failed', e); }
-}
-
-/* 轮询类请求的窗口上界量化：服务端 _json_cached 只在「调用前后的缓存条目一模一样」
- * 时才发 ETag（wb_proxy.py:16872），而缓存键里含 until。until 每轮都取 now()，
- * 缓存键每轮都是新的 → before 永远是 None → 304 一次都命不中外加整份重传。
- * 量化到服务端聚合缓存自己的 TTL（wb_proxy.py:1778 _STATS_TTL = 15s）：同一个 15 秒
- * 桶内 URL 逐字相同，第 2、3 轮直接吃 304；代价是最多 15 秒的新鲜度延迟。
- * 只有轮询走这条（loadRange(true)），用户手点区间仍用精确 now。 */
-const POLL_UNTIL_BUCKET = 15;
-function pollUntil(){
-  return Math.floor(Math.floor(Date.now() / 1000) / POLL_UNTIL_BUCKET) * POLL_UNTIL_BUCKET;
-}
-function rangeParams(range, untilAt){
-  // since 必须和 until 用同一个时间点推导，否则 since 仍在逐秒变化，URL 照样每轮都新。
-  const now = (untilAt === undefined || untilAt === null) ? Math.floor(Date.now() / 1000) : untilAt;
-  if (range === 'd3')  return `range=custom&since=${now - 3*86400}&until=${now}`;
-  if (range === 'd30') return `range=custom&since=${now - 30*86400}&until=${now}`;
-  if (range === 'all') return `range=custom&since=${now - 365*86400}&until=${now}`;
-  return `range=${range}`;
 }
 
 /* ============================================================
@@ -23432,80 +23444,102 @@ if(typeof MutationObserver !== 'undefined'){
 /* ============================================================
    加载与渲染
    ============================================================ */
-/* 区间/轮询的代次。与 refreshInner 里 REFRESH_GEN 同一套理由：取数期间又发起了更新
- * 的一轮（刚切了区间、或轮询撞上点击），这批结果已经过期，直接丢掉——否则慢的那一轮
- * 晚到，会把上一个区间的数字画到新区间的标题下面（实测有 1.2~1.8 秒的错位窗口）。 */
 let WBA_GEN = 0;
-const WBA_PENDING = new Map();
-async function loadRange(polled){
-  const range = state.range;
-  if(polled && WBA_PENDING.has(range)) return;
-  WBA_PENDING.set(range, (WBA_PENDING.get(range) || 0) + 1);
-  const gen = ++WBA_GEN;
-  const untilAt = polled ? pollUntil() : null;
-  $('kpis').style.opacity = .55;
-  const rp = rangeParams(state.range, untilAt);
-  try{
-    const [analytics, series, prev] = await Promise.all([
-      api(`/usage/analytics?realm=all&${rp}`),
-      api(`/usage/timeseries?realm=all&${rp}`),
-      loadPrevSummary(untilAt),
-    ]);
-    if (gen !== WBA_GEN) return;
-    state.analytics = analytics;
-    state.series = series;
-    prevSummary = prev;
-  } catch(e){
-    if (gen !== WBA_GEN) return;
-    console.error('load range failed', e);
-  } finally {
-    const remaining = WBA_PENDING.get(range) - 1;
-    if(remaining) WBA_PENDING.set(range, remaining);
-    else WBA_PENDING.delete(range);
+let boardQuery = '';
+let boardInFlight = false;
+let boardForcePending = false;
+let boardPending = true;
+let boardClosed = false;
+let boardRevision = '';
+let boardMatrixRevision = '';
+let boardPreviewRevision = '';
+let boardRecentAt = 0;
+let boardRecentInFlight = false;
+let boardDetailsAt = 0;
+
+function usageBoardQuery(){
+  const query = new URLSearchParams({range: state.range});
+  if(state.range === 'custom'){
+    for (const [key, id] of [['since','rangeCustomSince'], ['until','rangeCustomUntil']]){
+      const stamp = fromLocalInputValue($(id).value);
+      if(stamp !== null) query.set(key, stamp);
+    }
   }
-  $('kpis').style.opacity = 1;
-  renderKpis();
-  renderSeriesMeta();
-  drawSeries();
-  drawSparks();
-  renderDim();
-  loadRecent();
+  return query;
 }
 
-async function loadStatic(){
-  try{ state.perf = await api('/usage/perf'); } catch(e){ console.error(e); }
-  await loadHeat();
-  renderPerfFold();
-  // 剩余用量 / 积分扣减 / 积分获取历史：原版区块的数据管道原来挂在旧 loadAnalytics 上，
-  // 页面换成新版后这里补回调用（展开对应折叠区时还会再刷一次）。
-  try{ loadRemainingUsage(); }catch(e){}
-  try{ loadCreditHistory(); }catch(e){}
-  try{ loadCreditGrants(); }catch(e){}
-}
-
-/* 热力图按「本地日」取数：since/until 都钉在本地午夜，缓存键一整天不变；
- * until 取到明天 0 点，今天新产生的用量也能落进今天的格子。只在进页面、
- * 跨天或距上次取数满 60 秒时重取——以前只在进页面取一次，跨过午夜后页面
- * 还停在旧的一天（issue #541）。 */
-let heatFetchedAt = 0, heatFetchedDay = '', heatLoading = false;
-async function loadHeat(){
-  if (heatLoading) return;
-  heatLoading = true;
-  const nowMs = Date.now();
-  const midnight = new Date(nowMs); midnight.setHours(0,0,0,0);
-  const since = Math.floor(midnight.getTime()/1000) - 366*86400;
-  const until = Math.floor(midnight.getTime()/1000) + 86400;
-  heatFetchedAt = nowMs/1000;
-  heatFetchedDay = fmtDate(nowMs/1000);
+async function loadRange(polled, force){
+  const query = usageBoardQuery();
+  const queryKey = query.toString();
+  if(queryKey !== boardQuery){
+    boardQuery = queryKey;
+    boardRevision = boardMatrixRevision = '';
+    boardPreviewRevision = '';
+    boardPending = true;
+    boardClosed = query.has('until') && Math.max(
+      Number(query.get('since')), Number(query.get('until'))) <= Date.now() / 1000;
+    WBA_GEN++;
+  }
+  if(force) boardForcePending = true;
+  if(boardInFlight || (polled && boardClosed && !boardPending && !boardForcePending)) return;
+  const gen = WBA_GEN;
+  const status = $('usageBoardStatus');
+  boardInFlight = true;
+  query.set('rev', boardRevision);
+  query.set('matrix_rev', boardMatrixRevision);
+  query.set('preview_rev', boardPreviewRevision);
+  if(boardForcePending){
+    query.set('refresh', '1');
+    boardForcePending = false;
+  }
   try{
-    state.heat = await api(`/usage/timeseries?realm=all&range=custom&since=${since}&until=${until}&bucket_seconds=86400`);
-  } catch(e){ console.error('heat failed', e); }
-  heatLoading = false;
-  buildHeatGrid(state.heat);
-}
-function maybeLoadHeat(){
-  const now = Date.now()/1000;
-  if (fmtDate(now) !== heatFetchedDay || now - heatFetchedAt >= 60) loadHeat();
+    const result = await api('/usage/board?' + query, {});
+    if(gen !== WBA_GEN) return;
+    boardPending = result.pending || (!result.revision && !result.error);
+    $('kpis').style.opacity = result.revision || result.preview_revision ? 1 : .55;
+    if(result.error){
+      status.textContent = result.revision ? '统计更新失败，显示上次结果' : '用量统计失败，请刷新重试';
+    } else if(result.pending && !result.revision){
+      const pct = result.total_bytes
+        ? Math.min(100, Math.floor(100 * result.indexed_bytes / result.total_bytes))
+        : null;
+      status.textContent = (result.preview_revision ? '今日已更新，累计与历史计算中' : '正在后台计算用量')
+        + (pct === null ? '' : ' · ' + pct + '%');
+    } else if(result.updated_at){
+      status.textContent = '统计更新于 ' + new Date(result.updated_at * 1000).toLocaleTimeString();
+    }
+    if(result.matrix){
+      state.perf = result.matrix.perf;
+      state.heat = result.matrix.heat;
+      prevSummary = result.matrix.previous;
+      renderPerfFold();
+      buildHeatGrid(state.heat);
+      boardMatrixRevision = result.matrix_revision;
+    }
+    if(result.core){
+      state.analytics = result.core.analytics;
+      state.analytics.updated_at = result.updated_at;
+      state.series = result.core.series;
+      boardRevision = result.revision;
+      renderSeriesMeta();
+      drawSeries();
+      drawSparks();
+      renderDim();
+    }
+    if(result.preview){
+      state.analytics = result.preview;
+      state.series = null;
+      state.perf = null;
+      prevSummary = null;
+      boardPreviewRevision = result.preview_revision;
+    }
+    if(result.core || result.matrix || result.preview) renderKpis();
+  }catch(e){
+    if(gen === WBA_GEN) status.textContent = '无法读取用量统计';
+  }finally{
+    boardInFlight = false;
+    if(gen !== WBA_GEN || boardForcePending) loadRange(false);
+  }
 }
 
 /* ---------------- KPI ---------------- */
@@ -23578,7 +23612,8 @@ function renderKpis(){
   $('kCost').innerHTML = `<span style="color:var(--red)" ${w.cost_cny != null ? `data-tip="${fullNum(w.cost_cny, 4)} 元"` : ''}>${fmtCostCny(w.cost_cny)}</span>`;
   $('kCostSub').innerHTML = usd != null ? `<span style="color:var(--green)">${usd.toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})}</span> · 积分消耗 ${numSpan(w.credit, 1)}` : '—';
 
-  $('pageSub').textContent = `区间 ${fmtCompact(w.total_tokens)} tokens · ${fmtCompact(w.requests)} 次请求 · 更新于 ${new Date().toLocaleTimeString('zh-CN', {hour12:false})}`;
+  const updated = a.updated_at ? new Date(a.updated_at * 1000) : new Date();
+  $('pageSub').textContent = `区间 ${fmtCompact(w.total_tokens)} tokens · ${fmtCompact(w.requests)} 次请求 · 更新于 ${updated.toLocaleTimeString('zh-CN', {hour12:false})}`;
 
   // B 版：环比徽章
   const selfCache = w.prompt_tokens ? (w.cached_tokens || 0) / w.prompt_tokens * 100 : null;
@@ -24102,11 +24137,15 @@ $('rangeSeg').addEventListener('click', ev => {
   const btn = ev.target.closest('button'); if (!btn) return;
   [...$('rangeSeg').children].forEach(b => b.classList.toggle('on', b === btn));
   state.range = btn.dataset.range;
+  $('rangeCustomBox').hidden = state.range !== 'custom';
+  if(state.range === 'custom') prefillCustomRange();
   // 新区间的数字还没到：先把页头的旧读数清成占位，别让「全部」标题下面继续挂着本月的
   // 数字（那一段是页头最长的一行，误读代价最大）。取回后 renderKpis() 会重新写满。
   $('pageSub').textContent = '—';
   loadRange();
 });
+$('rangeCustomBox').addEventListener('change', () => loadRange(false));
+$('usageBoardRefresh').addEventListener('click', () => loadRange(false, true));
 $('metricSeg').addEventListener('click', ev => {
   const btn = ev.target.closest('button'); if (!btn) return;
   [...$('metricSeg').children].forEach(b => b.classList.toggle('on', b === btn));
@@ -24198,15 +24237,25 @@ function syncOldRange(){
 /* ============================================================
    启动与对外接线
    ============================================================ */
-let wbaStarted = false;
 function wbaTick(){
-  if (!wbaStarted){ wbaStarted = true; loadStatic(); }
-  maybeLoadHeat();
-  loadRange(true);   // 轮询：窗口上界按 15 秒桶量化，连续两轮同桶才有可能吃 304
+  if(currentMainTab !== 'analytics' || document.hidden) return;
+  loadRange(true);
+  if(!boardRecentInFlight && Date.now() - boardRecentAt >= 5000){
+    boardRecentAt = Date.now();
+    boardRecentInFlight = true;
+    loadRecent().finally(() => { boardRecentInFlight = false; });
+  }
+  if(Date.now() - boardDetailsAt >= 30000){
+    boardDetailsAt = Date.now();
+    if($('foldRemainBox').open) loadRemainingUsage();
+    if($('foldGrantsBox').open) loadCreditGrants();
+    if($('foldCreditsBox').open){ syncOldRange(); loadCreditHistory(); }
+  }
 }
-window.loadAnalytics = wbaTick;            /* 面板 5s 轮询 / 切页 / 回前台统一入口 */
-window.loadAnalyticsMatrix = function(){}; /* 旧性能矩阵已并入本页（性能分位折叠区） */
-window.wbaLoad = wbaTick;                  /* 调试入口 */
+window.loadAnalytics = wbaTick;
+window.loadAnalyticsMatrix = function(){};
+window.wbaLoad = wbaTick;
+window.wbaRenderCost = function(){ renderKpis(); renderDim(); };
 /* 面板每 5 秒扫描全页表格并自动接排序（applyAllTableSorts）：把本页表格登记进
    禁排名单，避免表头被挂上排序箭头、破坏紧凑版式。剩余用量 / 积分扣减 / 积分
    获取三张表沿用原版的排序接线（自带 id 且已登记），不在此列。 */

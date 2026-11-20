@@ -88,6 +88,7 @@ wb_scheduler.py
 wb_settings.py
 wb_tasks.py
 wb_usage_io.py
+wb_usage_board.py
 wb_tiers.py
 wb_time.py
 wb_updates.py

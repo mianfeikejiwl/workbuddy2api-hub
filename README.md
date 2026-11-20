@@ -20,7 +20,7 @@
 This project is for protocol research and personal use only. Prefer the official client, do not use your primary account, and do not resell or share access.
 
 <p align="center">
-  <a href="https://github.com/ardeyouxipianyi/workbuddy2api-hub/releases"><img src="https://img.shields.io/badge/Release-v2.1.3-2496ED?style=flat-square" alt="Version 2.1.3"></a>
+  <a href="https://github.com/niyouqianma/workbuddy2api-hub/releases"><img src="https://img.shields.io/badge/Release-v2.1.7-2496ED?style=flat-square" alt="Version 2.1.7"></a>
   <img src="https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square" alt="Python">
   <img src="https://img.shields.io/badge/API-OpenAI_Compatible-412991?style=flat-square" alt="OpenAI API">
   <img src="https://img.shields.io/badge/Dual_Realm-Intl_&_CN-0DBD8B?style=flat-square" alt="Dual Realm">
@@ -82,10 +82,10 @@ This project is for protocol research and personal use only. Prefer the official
 
 ```bash
 # 官方源（直连 GitHub 环境）：
-curl -fsSL https://raw.githubusercontent.com/ardeyouxipianyi/workbuddy2api-hub/main/quick-deploy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/niyouqianma/workbuddy2api-hub/main/quick-deploy.sh | bash
 
 # 国内网络 / NAS 加速：
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/ardeyouxipianyi/workbuddy2api-hub/main/quick-deploy.sh | sudo bash
+curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/niyouqianma/workbuddy2api-hub/main/quick-deploy.sh | sudo bash
 ```
 
 > 公网部署或配合反向代理：在管道前指定 `WB_DEPLOY_MODE=public bash`，并搭配 Nginx / Caddy / Cloudflare Tunnel 配置 TLS。
@@ -95,7 +95,7 @@ curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/ardeyouxipiany
 ```yaml
 services:
   wb-proxy:
-    image: ghcr.io/ardeyouxipianyi/workbuddy2api-hub:latest
+    image: ghcr.io/niyouqianma/workbuddy2api-hub:latest
     container_name: wb-proxy
     restart: unless-stopped
     ports:
@@ -213,6 +213,7 @@ export ANTHROPIC_API_KEY="你在看板设置中添加并绑定的API_Key"
 | `API_KEY` | 自动生成 | 初始 API Key（看板配置多 Key 后优先由看板管理） |
 | `WB_DEPLOY_MODE` | `lan` | 部署模式：`lan`（0.0.0.0）、`local`（127.0.0.1）、`public` |
 | `WB_MAX_PAYLOAD_BYTES` | `16777216` | 单请求体上限（字节，默认 16MB，支持 1–256 MB） |
+| `WB_USAGE_ROTATE_BYTES` | `8388608` | 用量日志的轮转阈值（字节，默认 8 MiB）。`0` 停止新轮转。备份和降级见 [用量目录说明](usage/README.txt) |
 | `WB_CHAT_SLOT_WAIT` | `30` | 并发槽位的等待秒数：全局对话槽位与 Key 级 `concurrency_limit` 共用这个预算，等到才有名额，超时仍按 429 拒绝 |
 | `WB_ENABLE_ANTHROPIC_MESSAGES` | `0` | 是否开启实验性 Anthropic Messages 协议转换 |
 | `WB_BACKGROUND_MODEL_TARGET` | 留空 | 后台模型别名改写目标（如 DSH 客户端自动映射） |
@@ -255,7 +256,7 @@ python tests/run_all.py            # 全部套件
 python tests/run_all.py realm      # 只跑名字里含 realm 的
 ```
 
-- 310 个套件：232 个 Python + 78 个 JS；JS 需要 PATH 上有 `node`，缺失时会跳过并提示。
+- 311 个套件：233 个 Python + 78 个 JS；JS 需要 PATH 上有 `node`，缺失时会跳过并提示。
 - `tests/_mobile_check.py` 是独立的 Playwright 手机/桌面布局检查器（需自行安装 Playwright），按需手动运行，不在上面的套件集里。
 - `tests/_visual_recent.py` 是同一类手动检查器：用合成 fixture 起一份 1480 宽的「请求列表」，验证失败徽章点开的详情弹窗、四个过滤下拉真的把参数发到 `/usage/recent`，并把列表 / 弹窗 / 筛选条截图写到系统临时目录的 `wb-visual-recent/`。
 - CI（`.github/workflows/tests.yml`）跑同一条命令：Ubuntu 上 python 3.9 与 3.12（3.9 是本项目声称的最低版本），Windows 上 python 3.12；推送 `v*` tag 时额外断言 **tag == 源码版本**（`-ci` 演练 tag 豁免）。
@@ -265,7 +266,18 @@ python tests/run_all.py realm      # 只跑名字里含 realm 的
 ## 七、版本更新记录 (Changelog)
 
 本版更新与完整历史版本请查阅 **[docs/CHANGELOG.md](docs/CHANGELOG.md)**。
-### Unreleased
+
+### v2.1.7
+
+- **用量看板提速**。今日指标优先显示，累计与历史在后台补齐。实时列表只更新变化的行，浏览历史页时保留当前内容。
+- **用量日志自动轮转**。活动日志默认达到 8 MiB 后封存，后台压缩、索引并生成汇总。备份时请包含整个用量目录。
+
+### v2.1.5
+
+- **更新源迁移**：面板的每日更新检查、手动检查与安装链接默认指向 `niyouqianma/workbuddy2api-hub`，不再请求已停用的旧仓库；`WB_UPDATE_REPO` 仍可覆盖为自建 fork。
+- **面板仓库入口迁移**：顶部 GitHub 图标与侧栏「WorkBuddy 仓库」统一指向新仓库。
+
+### v2.1.4
 
 - **网页工具安全修正**：Responses 与 Anthropic 多轮网页工具都会继承 API Key 的账号白名单；WorkBuddy `/agenttool` 不再跟随重定向，避免账号鉴权头被发送到其他主机。
 - **网页工具网关（搜索 / 抓取 / 搜索+抓取）**：新增三个能力端点 `/v1/tools/search`、`/v1/tools/fetch`、`/v1/tools/search_fetch`，以及三个伪模型 `wb-search` / `wb-fetch` / `wb-search-fetch`——它们出现在 `/v1/models`，用 API key 经 `/v1/chat/completions` 或 `/v1/messages` 独立调用，不消耗上游模型额度。搜索后端可在「WorkBuddy 官方 `/agenttool`」与「本地多引擎链」之间多选，抓取后端同理；元宝走账号池，支持全池轮换、按区域限定与指定账号。协议层：Anthropic Messages 支持 `web_search_20250305` 的原生多轮执行（模型自己决定搜什么，网关执行后回填 `server_tool_use` / `web_search_tool_result` 与 `usage.server_tool_use.web_search_requests`）；OpenAI Responses 的执行器改接同一套 provider，事件序列不变；Gemini 的 `googleSearch` 走预检索并回填 `groundingMetadata`。默认关闭（`web_gateway.enabled`），关闭时行为与 v2.1.3 完全一致；`local_web_tools=true` 的既有部署仍走原来的 Responses 代跑路径。 / **Web tool gateway (search / fetch / search+fetch)**: three capability endpoints (`/v1/tools/search`, `/v1/tools/fetch`, `/v1/tools/search_fetch`) plus three pseudo models (`wb-search`, `wb-fetch`, `wb-search-fetch`) that are listed in `/v1/models` and called independently with an API key through `/v1/chat/completions` or `/v1/messages` without spending upstream model credits. Search backends are multi-select between WorkBuddy's own `/agenttool` API and the local multi-engine chain; fetch backends work the same way. The WorkBuddy backend runs on the account pool with whole-pool rotation, realm selection or a specific account list. Protocol layer: Anthropic Messages gets native multi-round `web_search_20250305` (the model decides what to search, the gateway executes and fills in `server_tool_use` / `web_search_tool_result` and `usage.server_tool_use.web_search_requests`); OpenAI Responses routes its executor through the same providers with an unchanged event sequence; Gemini's `googleSearch` runs a pre-search and fills `groundingMetadata`. Off by default (`web_gateway.enabled`); when off the behaviour is exactly v2.1.3, and deployments with `local_web_tools=true` keep the original Responses path.
@@ -325,7 +337,7 @@ python tests/run_all.py realm      # 只跑名字里含 realm 的
 ## ⭐ Star 趋势
 
 <p align="center">
-  <a href="https://star-history.com/#ardeyouxipianyi/workbuddy2api-hub&Date">
-    <img src="https://api.star-history.com/svg?repos=ardeyouxipianyi/workbuddy2api-hub&type=Date" alt="Star History Chart" width="760">
+  <a href="https://star-history.com/#niyouqianma/workbuddy2api-hub&Date">
+    <img src="https://api.star-history.com/svg?repos=niyouqianma/workbuddy2api-hub&type=Date" alt="Star History Chart" width="760">
   </a>
 </p>
