@@ -2809,6 +2809,10 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     'CodeArts 接入': 'CodeArts',
     'CodeArts 出口': 'CodeArts exit',
     '出站 TLS 状态': 'Outbound TLS status',
+    '语音合成 TTS': 'Text-to-speech (TTS)',
+    '语音转写 ASR': 'Speech-to-text (ASR)',
+    '语音合成 ': 'TTS ',
+    '语音转写 ': 'ASR ',
     '默认 auto：优先使用随包 Go/uTLS 桥，不可用时自动回退 Python/OpenSSL。这里只显示脱敏状态；桥认证密钥、代理凭据和账号 token 不会返回浏览器。': 'Default auto: prefer the bundled Go/uTLS bridge and fall back to Python/OpenSSL when it is unavailable. Only redacted status is shown here; the bridge secret, proxy credentials and account tokens are never sent to the browser.',
     '请求模式': 'Requested mode',
     '桥状态': 'Bridge state',
@@ -4051,6 +4055,8 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
   };
   var HANT_PHRASES = {
     "暂无请求记录": "暫無請求記錄",
+    "语音合成 TTS": "語音合成 TTS",
+    "语音转写 ASR": "語音轉寫 ASR",
     "今日已更新，累计与历史计算中": "今日已更新，累計與歷史計算中",
     "正在后台计算用量": "正在背景計算用量",
     "统计更新于": "統計更新於",
@@ -4525,7 +4531,6 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     "每个账号固定绑定一个出口代理槽。槽位地址变化时绑定账号自动跟随；禁用或删除后回退直连。": "每個帳號固定繫結一個出口代理槽。槽位地址變化時繫結帳號自動跟隨；禁用或刪除後回退直連。",
     "每日签到 (国内版)": "每日簽到 (國內版)",
     "Buddy 加油站签到": "Buddy 加油站簽到",
-    "本期 Buddy 加油站活动": "本期 Buddy 加油站活動",
     "当前连续登录天数": "目前連續登入天數",
     "WorkBuddy 成长计划": "WorkBuddy 成長計劃",
     "每日签到:": "每日簽到:",
@@ -6626,7 +6631,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       </div>
       <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(185px,1fr))">
         <div class="card accent2" title="Buddy 加油站每日签到活动">
-          <div class="k">本期 Buddy 加油站活动</div>
+          <div class="k">Buddy 加油站签到</div>
           <div class="v" id="cnTodayCheckinState" style="font-size:17px;letter-spacing:-.2px">-</div>
         </div>
         <div class="card accent">
@@ -6759,11 +6764,18 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
           <div style="font-size:12px;color:var(--dim);margin-bottom:4px">每 Key 每日积分上限</div>
           <input id="setMediaDailyCredits" type="number" min="0" max="100000" style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:var(--fg);font:inherit">
         </div>
+        <label style="min-width:150px;height:38px;margin-top:20px;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--fg)">
+          <input id="setTtsEnabled" type="checkbox"> 语音合成 TTS
+        </label>
+        <label style="min-width:150px;height:38px;margin-top:20px;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--fg)">
+          <input id="setAsrEnabled" type="checkbox"> 语音转写 ASR
+        </label>
         <button onclick="saveMediaConfig(this)" style="height:38px;margin-top:20px">保存</button>
       </div>
       <div style="font-size:12px;color:var(--dim);margin-top:10px">
         每 Key 每日积分上限填 0 表示不限。视频时长会与模型目录里的上限取小值。
         生视频并发超过上限时新任务<b>先排队</b>（不提交上游、不扣积分），并行任务会尽量分到不同账号上。
+        语音合成 <code>/v1/audio/speech</code> 与语音转写 <code>/v1/audio/transcriptions</code> 默认关闭；开启后使用文本号池账号，并计入当前账号的积分消耗。
       </div>
     </section>
   </div>
@@ -16859,8 +16871,9 @@ const MEDIA_STATUS_BADGE = {
   completed: 'ok', failed: 'bad'
 };
 
-function applyMediaSettings(media){
+function applyMediaSettings(media, settings){
   const cfg = media || {};
+  const all = settings || {};
   const rate = document.getElementById('setMediaImageRate');
   if(rate && cfg.image_max_per_minute != null) rate.value = cfg.image_max_per_minute;
   const seconds = document.getElementById('setMediaVideoSeconds');
@@ -16869,6 +16882,10 @@ function applyMediaSettings(media){
   if(credits && cfg.daily_credits_per_key != null) credits.value = cfg.daily_credits_per_key;
   const conc = document.getElementById('setMediaVideoConcurrency');
   if(conc && cfg.video_concurrency != null) conc.value = cfg.video_concurrency;
+  const tts = document.getElementById('setTtsEnabled');
+  if(tts && all.tts_enabled != null) tts.checked = all.tts_enabled === true;
+  const asr = document.getElementById('setAsrEnabled');
+  if(asr && all.asr_enabled != null) asr.checked = all.asr_enabled === true;
   const state = document.getElementById('setMediaState');
   if(state){
     state.textContent = '(始终开启)';
@@ -16888,12 +16905,14 @@ async function saveMediaConfig(btn){
       video_max_seconds: num('setMediaVideoSeconds', 15),
       daily_credits_per_key: num('setMediaDailyCredits', 0),
       video_concurrency: num('setMediaVideoConcurrency', 3)
-    }
+    },
+    tts_enabled: !!(document.getElementById('setTtsEnabled') || {}).checked,
+    asr_enabled: !!(document.getElementById('setAsrEnabled') || {}).checked
   };
   if(btn) btn.disabled = true;
   try{
     const res = await postJSON('/settings/save', payload);
-    if(res && res.media) applyMediaSettings(res.media);
+    if(res) applyMediaSettings(res.media, res);
     toast('媒体设置已保存');
     loadSettings();
   }catch(e){
@@ -17372,7 +17391,7 @@ async function loadSettings(showToast, opts){
     // 后端没这个字段）都保持上游那个合并的「网关与账号」页。
     const separateTab = data.accounts_separate_tab === true;
     applyAccountsTabLayout(window.__NEXT_UI__ || separateTab);
-    applyMediaSettings(data.media);
+    applyMediaSettings(data.media, data);
     const separateState = document.getElementById('setAccountsSeparateState');
     if(separateState) separateState.textContent = separateTab ? '(已开启)' : '(默认：合并)';
     const separateInput = document.getElementById('setAccountsSeparate');

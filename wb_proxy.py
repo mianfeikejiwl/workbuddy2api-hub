@@ -71,6 +71,7 @@ import urllib.request
 import uuid
 import wb_accounts
 import wb_activity
+import wb_audio
 import wb_atrest
 import wb_catalog
 import wb_codearts
@@ -331,6 +332,10 @@ MEDIA_POST_PATHS = (
     "/v1/images/generations", "/images/generations",
     "/v1/images/edits", "/images/edits",
     "/v1/videos", "/videos",
+)
+AUDIO_POST_PATHS = (
+    "/v1/audio/speech", "/audio/speech",
+    "/v1/audio/transcriptions", "/audio/transcriptions",
 )
 #: 媒体请求体上限。改图的输入图是 data URL：8 MB 原图编码后约 10.7 MB，再包一层
 #: JSON 就逼近通用上限（默认 16 MB，还可能被 max_payload_mb 调小），而那条上限是
@@ -1755,7 +1760,8 @@ def record_usage(model, usage, stream=None, elapsed_ms=None, ttft_ms=None, gen_m
     if kind != "chat":
         # 媒体模型不在 chat 价目表里，current_policy_id() 会给一个 chat 的默认策略，
         # 那会让「按价目表统计」把媒体请求算进某个 chat 策略的样本里。
-        row["cost_policy"] = "media"
+        row["cost_policy"] = (
+            "media" if kind in ("image", "video") else "audio")
     else:
         row["cost_policy"] = ("codearts:unpriced" if realm == "codearts"
                               else wb_pricing.current_policy_id(model))
@@ -1864,7 +1870,7 @@ def upstream_failure_response(handler, model, exc, t_start, key_id=None):
 def record_error(model, status, message, elapsed_ms=None, account=None,
                  usage=None, stream=None, ttft_ms=None, gen_ms=None, fp=None,
                  outcome="failed", key=None, realm=None, proxy_slot=None,
-                 proxy_exit=None):
+                 proxy_exit=None, kind="chat"):
     """Record one failed request as exactly one JSONL row.
 
     Passing the account uid records which account the request was bound to, so
@@ -1891,6 +1897,7 @@ def record_error(model, status, message, elapsed_ms=None, account=None,
         "model": model,
         "error": True,
         "outcome": outcome,
+        "kind": kind,
         "status": status,
         "message": str(message)[:200],
         "elapsed_ms": elapsed_ms,
@@ -1916,6 +1923,13 @@ def record_error(model, status, message, elapsed_ms=None, account=None,
     if proxy_exit:
         row["proxy_exit"] = proxy_exit
     row["key"] = key or ""
+    if kind != "chat":
+        row["cost_policy"] = (
+            "media" if kind in ("image", "video") else "audio")
+    else:
+        row["cost_policy"] = (
+            "codearts:unpriced" if realm == "codearts"
+            else wb_pricing.current_policy_id(model))
     _persist_usage(row, "error persist failed")
     dur = f" {elapsed_ms:.0f}ms" if elapsed_ms is not None else ""
     # 账号与终态也带上看板日志。上面那段本来就把 account 写进了 JSONL，但日志
@@ -1925,7 +1939,7 @@ def record_error(model, status, message, elapsed_ms=None, account=None,
     egress_tag = (f" slot={proxy_slot} egress={proxy_exit}"
                   if proxy_slot or proxy_exit else "")
     log(f"request error: model={model}{dur}{acc_tag}{egress_tag} status={status} outcome={outcome} msg={str(message)[:180]}",
-        level="ERROR", tag="chat")
+        level="ERROR", tag=kind)
     return row
 def _pct(values, q):
     """Nearest-rank percentile (no interpolation) - good enough for latency."""
@@ -12735,6 +12749,8 @@ def runtime_settings_view():
         "auto_switch_product": wb_settings.auto_switch_product(ACCOUNTS_DIR),
         "auto_switch_products": wb_settings.auto_switch_products(ACCOUNTS_DIR),
         "enable_anthropic_messages": wb_settings.enable_anthropic_messages(ACCOUNTS_DIR),
+        "tts_enabled": wb_settings.audio_enabled(ACCOUNTS_DIR, "tts"),
+        "asr_enabled": wb_settings.audio_enabled(ACCOUNTS_DIR, "asr"),
         "model_aliases": wb_settings.model_aliases(ACCOUNTS_DIR),
         "model_aliases_enabled": wb_settings.model_aliases_enabled(ACCOUNTS_DIR),
         "filter_models_by_key": wb_settings.filter_models_by_key(ACCOUNTS_DIR),
@@ -12844,7 +12860,7 @@ def runtime_settings_view():
         "accounts_dir": ACCOUNTS_DIR,
         "usage_dir": USAGE_DIR,
         "settings_file": wb_settings.settings_path(ACCOUNTS_DIR),
-        "version": "2.1.7",
+        "version": "2.2.0",
     }
 def current_account():
     """Account used for display purposes (health / usage summaries)."""
@@ -19841,6 +19857,11 @@ def aggregate_stream(raw_iter, model, resp_id):
             continue
         if first_chunk_at is None:
             first_chunk_at = time.time()
+        if isinstance(chunk.get("error"), dict):
+            err = chunk["error"]
+            message = str(err.get("message") or err.get("msg") or "upstream stream error")
+            code = err.get("code") or "upstream_stream_error"
+            raise RuntimeError("%s (code %s)" % (message, code))
         if chunk.get("id"):
             resp_id = chunk["id"]
         u = chunk.get("usage")
@@ -21709,6 +21730,8 @@ def stream_messages_events(raw_iter, model, holder=None, web_meta=None):
             continue
         if isinstance(chunk.get("error"), dict):
             state["failed"] = True
+            if isinstance(holder, dict):
+                holder["failed"] = True
             err = chunk["error"]
             yield anthropic_sse_frame("error", {
                 "error": {
@@ -21795,6 +21818,8 @@ def stream_messages_events(raw_iter, model, holder=None, web_meta=None):
         if finish:
             state["stop"] = _anthropic_stop_reason(finish)
     if state["failed"]:
+        if isinstance(holder, dict):
+            holder["failed"] = True
         return
     if not state["started"]:
         for frame in ensure_start(None):
@@ -22270,6 +22295,15 @@ def stream_responses_events(upstream, model, holder):
             chunk = json.loads(data)
         except Exception:
             continue
+        if isinstance(chunk.get("error"), dict):
+            err = chunk["error"]
+            message = str(err.get("message") or err.get("msg") or "upstream stream error")
+            code = err.get("code") or "upstream_stream_error"
+            holder["failed"] = True
+            final = resp_obj("failed")
+            final["error"] = {"code": str(code), "message": message}
+            yield ev("response.failed", {"response": final})
+            return
         u = chunk.get("usage")
         if u:
             if usage is None or (u.get("total_tokens") or 0) >= (usage.get("total_tokens") or 0):
@@ -22697,7 +22731,7 @@ class Handler(BaseHTTPRequestHandler):
             super().finish()
         except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
             pass
-    server_version = "wb-proxy/2.1.7"
+    server_version = "wb-proxy/2.2.0"
     def log_message(self, fmt, *args):
         # 静默过滤前端看板高频定时心跳的正常 200 GET 请求（/logs、/usage、/accounts 轮询等）
         # 避免自增死循环刷屏与日志污染。遇 4xx/5xx 异常或所有非 GET 业务操作依然如实记录。
@@ -24971,6 +25005,40 @@ class Handler(BaseHTTPRequestHandler):
             # which is the most natural shape for a hand-written file.
             return data
         return {}
+    def _read_raw_body(self, max_bytes):
+        """Read a request body as bytes, without JSON decoding.
+
+        Audio uploads are multipart and are not JSON. This keeps the existing
+        JSON reader untouched while applying the same Content-Length/chunked
+        limits and ``_body_consumed`` marker.
+        """
+        if getattr(self, "_body_consumed", False):
+            return b""
+        transfer_encoding = (self.headers.get("Transfer-Encoding") or "").lower()
+        try:
+            if "chunked" in transfer_encoding:
+                return self._read_chunked_body(max_bytes=max_bytes)
+            length = int(self.headers.get("Content-Length") or 0)
+        except (BodyTooLarge, BadJSON):
+            raise
+        except Exception:
+            raise BadJSON()
+        if length > max_bytes:
+            raise BodyTooLarge(length)
+        if length < 0:
+            raise BadJSON()
+        raw = b""
+        try:
+            if length:
+                raw = self.rfile.read(length)
+                if len(raw) != length:
+                    raise BadJSON()
+            self._body_consumed = True
+            return raw
+        except (BodyTooLarge, BadJSON):
+            raise
+        except Exception:
+            raise BadJSON()
     def _payload_or_error(self, allow_list=False):
         """Read the body, replying with the right error and returning None."""
         configured_mb = wb_settings.max_payload_mb(ACCOUNTS_DIR)
@@ -25047,6 +25115,264 @@ class Handler(BaseHTTPRequestHandler):
         # 塞一个假模型名会污染按模型的错误率统计。这里只写一行带 tag 的运行日志。
         log("media error: HTTP %d %s" % (status, message), tag="media")
         return self._error(status, message, err_type)
+
+    def _pick_audio_account(self, realm, model_id, excluded):
+        """Pick a text-pool account for TTS or ASR.
+
+        Audio is a text-pool capability: media accounts must not receive it
+        unless pool separation is disabled, and the regular account guards,
+        API-key whitelist and pinned-account rules all still apply.
+        """
+        apply_daily_guards()
+        apply_reserve_credits()
+        hold = restriction_hold_remaining(realm)
+        if hold > 0:
+            raise wb_audio.AudioError(
+                429, "restriction_hold",
+                "upstream account restriction in effect; retry in %d seconds"
+                % (int(hold) + 1), "rate_limit_error")
+        allowed = self._key_allowed_accounts()
+        texts, _ = _ensure_pools()
+        if texts is None:
+            raise wb_audio.AudioError(
+                503, "pool_unavailable", "account pool is not ready",
+                "server_error")
+        pinned = pinned_account()
+        if pinned is not None:
+            try:
+                texts.require(pinned)
+            except wb_pool_scope.ScopeViolation as exc:
+                raise wb_audio.AudioError(403, "pool_boundary", str(exc),
+                                          "permission_error")
+            except wb_pool_text.PoolBoundaryBlocked as exc:
+                raise wb_audio.AudioError(503, "pool_boundary", str(exc),
+                                          "server_error")
+            if allowed is not None and pinned.uid not in allowed:
+                raise wb_audio.AudioError(
+                    403, "account_not_allowed",
+                    "the pinned account is not allowed by this API key",
+                    "permission_error")
+            if pinned.realm != realm:
+                raise wb_audio.AudioError(
+                    409, "realm_mismatch",
+                    "the pinned account belongs to a different realm",
+                    "invalid_request_error")
+            if not pinned.ready(model=model_id):
+                raise wb_audio.AudioError(
+                    503, "account_unavailable",
+                    "the pinned account is unavailable: %s"
+                    % pinned.unavailable_reason(model=model_id),
+                    "server_error")
+            return pinned
+        account = texts.pick(realm=realm, exclude=excluded, model=model_id,
+                             allowed=allowed)
+        if account is None:
+            raise wb_audio.AudioError(
+                503, "no_usable_account",
+                "no usable account for audio; " + texts.empty_detail(realm)
+                + pool_unavailable_detail(realm, model_id, allowed),
+                "server_error")
+        return account
+
+    def _handle_audio_post(self, path, payload):
+        """Serve OpenAI-compatible TTS and ASR through a WorkBuddy account."""
+        is_tts = path.endswith("/speech")
+        realm = self._request_realm() or CURRENT_REALM
+        excluded = set()
+        refreshed = set()
+        tried = 0
+        max_tries = 3
+        if is_tts:
+            try:
+                body, fmt = wb_audio.normalize_tts_request(payload)
+            except wb_audio.AudioError as exc:
+                return self._audio_error(exc)
+            model_id = wb_audio.TTS_DEFAULT_MODEL
+        else:
+            audio = payload.get("audio") or b""
+            model_id = "hunyuan-asr"
+            filename = _as_text(payload.get("filename")) or "audio.wav"
+            mime = _as_text(payload.get("mime")) or "audio/wav"
+            upstream_body, upstream_type = wb_audio.build_asr_multipart(
+                audio, filename=filename, mime=mime)
+        started = time.time()
+        while tried < max_tries:
+            try:
+                account = self._pick_audio_account(realm, model_id, excluded)
+            except wb_audio.AudioError as exc:
+                return self._audio_error(exc)
+            slot_ok = account_slot_acquire(account)
+            if not slot_ok:
+                excluded.add(account.uid)
+                tried += 1
+                continue
+            upstream = None
+            try:
+                if is_tts:
+                    url = account.chat_base_url() + wb_audio.TTS_PATH
+                    headers = wb_audio.tts_headers(account)
+                    data = json.dumps(body).encode("utf-8")
+                else:
+                    url = account.chat_base_url() + wb_audio.ASR_PATH
+                    headers = account.headers("chat")
+                    headers["Content-Type"] = upstream_type
+                    headers["Accept"] = "application/json"
+                    data = upstream_body
+                req = urllib.request.Request(url, data=data, method="POST",
+                                             headers=headers)
+                req.wb_exact_headers = list(headers.items())
+                upstream = wb_accounts.urlopen(req, timeout=120,
+                                               proxy=account.proxy)
+                if is_tts:
+                    pcm = wb_audio.collect_tts_pcm(upstream)
+                    response, content_type = wb_audio.build_tts_response(pcm, fmt)
+                else:
+                    raw = upstream.read()
+                    try:
+                        obj = json.loads(raw.decode("utf-8", "replace"))
+                    except Exception:
+                        raise wb_audio.AudioError(
+                            502, "invalid_asr_response",
+                            "ASR upstream returned invalid JSON",
+                            "server_error")
+                    text = wb_audio.parse_asr_response(obj)
+                    response = json.dumps({"text": text},
+                                          ensure_ascii=False).encode("utf-8")
+                    content_type = "application/json; charset=utf-8"
+                account.note_success(model=model_id)
+                record_usage(model_id, {"credit": 0}, stream=False,
+                             elapsed_ms=(time.time() - started) * 1000.0,
+                             account=account.uid, outcome="completed",
+                             key=self._key_id(), realm=realm,
+                             kind="tts" if is_tts else "asr")
+                if is_tts:
+                    return self._send_bytes(response, content_type)
+                return self._json(200, {"text": text})
+            except urllib.error.HTTPError as exc:
+                detail = read_http_error(exc, 600).decode("utf-8", "replace")
+                code = upstream_error_code(detail)
+                if exc.code == 403 and restriction_is_account_level(detail):
+                    account.note_restricted(detail=detail)
+                    _persist_restriction(account)
+                    note_account_restriction(realm, account.uid)
+                    record_error(model_id, 403, detail,
+                                 elapsed_ms=(time.time() - started) * 1000.0,
+                                 account=account.uid, realm=realm,
+                                 key=self._key_id(),
+                                 kind="tts" if is_tts else "asr")
+                    return self._audio_error(wb_audio.AudioError(
+                        403, "account_restricted", detail,
+                        "permission_error"))
+                if exc.code == 401 and account.uid not in refreshed:
+                    refreshed.add(account.uid)
+                    try:
+                        refresh_ok = account.refresh()
+                    except Exception:
+                        refresh_ok = False
+                    if refresh_ok:
+                        continue
+                    account.note_error("audio HTTP 401", cooldown=60,
+                                       model=model_id, detail=detail)
+                    excluded.add(account.uid)
+                    tried += 1
+                    continue
+                request_scoped = wb_audio.is_request_error(code, detail)
+                if exc.code == 413 or str(code) == "15052":
+                    return self._audio_error(wb_audio.AudioError(
+                        413, "audio_too_large", detail,
+                        "invalid_request_error"))
+                if request_scoped or exc.code in (400, 404):
+                    status = 400 if request_scoped else exc.code
+                    return self._audio_error(wb_audio.AudioError(
+                        status, code or "audio_request_error", detail,
+                        "invalid_request_error"))
+                if exc.code in (402, 429) or exc.code >= 500:
+                    account.note_error("audio HTTP %d" % exc.code,
+                                       cooldown=60, model=model_id,
+                                       detail=detail)
+                    excluded.add(account.uid)
+                    tried += 1
+                    continue
+                return self._audio_error(wb_audio.AudioError(
+                    exc.code, code or "audio_upstream_error", detail,
+                    "server_error"))
+            except wb_audio.AudioError as exc:
+                if exc.status in (400, 413, 429):
+                    return self._audio_error(exc)
+                account.note_error(exc.message[:160], cooldown=60,
+                                   model=model_id, detail=exc.detail)
+                excluded.add(account.uid)
+                tried += 1
+                continue
+            except Exception as exc:
+                if wb_accounts.is_tls_verify_error(exc):
+                    return self._audio_error(wb_audio.AudioError(
+                        502, "tls_verify_failed",
+                        wb_accounts.tls_verify_hint(exc), "server_error"))
+                account.note_error(str(exc)[:160], cooldown=60,
+                                   model=model_id)
+                excluded.add(account.uid)
+                tried += 1
+                continue
+            finally:
+                account_slot_release(account)
+                if upstream is not None:
+                    try:
+                        upstream.close()
+                    except Exception:
+                        pass
+        return self._audio_error(wb_audio.AudioError(
+            502, "audio_upstream_failed",
+            "audio request failed on every account", "server_error"))
+
+    def _audio_error(self, exc):
+        """Translate an AudioError without losing its protocol code."""
+        self._handle_expect_continue()
+        self._discard_body()
+        return self._json(exc.status, exc.payload())
+
+    def _audio_payload_or_error(self, path):
+        """Read and validate the audio body for TTS or ASR."""
+        if path.endswith("/transcriptions"):
+            try:
+                raw = self._read_raw_body(wb_audio.ASR_REQUEST_MAX_BYTES)
+            except BodyTooLarge as exc:
+                self._reject_body_after_reply = True
+                self._error(413, "audio too large (%d bytes > %d limit)"
+                            % (exc.length, wb_audio.ASR_REQUEST_MAX_BYTES),
+                            "invalid_request_error")
+                self._drain_rejected_body(exc.length)
+                self.close_connection = True
+                return None
+            except BadJSON:
+                self._error(400, "invalid audio body", "invalid_request_error")
+                return None
+            try:
+                _field, audio = wb_audio.parse_multipart(
+                    raw, self.headers.get("Content-Type") or "")
+            except wb_audio.AudioError as exc:
+                self._audio_error(exc)
+                return None
+            if len(audio) > wb_audio.ASR_MAX_BYTES:
+                self._audio_error(wb_audio.AudioError(
+                    413, "audio_too_large",
+                    "audio exceeds the 3 MB upstream limit",
+                    "invalid_request_error"))
+                return None
+            return {"audio": audio}
+        try:
+            return self._read_payload(max_bytes=MAX_PAYLOAD_BYTES, allow_list=False)
+        except BodyTooLarge as exc:
+            self._reject_body_after_reply = True
+            self._error(413, "payload too large (%d bytes > %d limit)"
+                        % (exc.length, MAX_PAYLOAD_BYTES),
+                        "invalid_request_error")
+            self._drain_rejected_body(exc.length)
+            self.close_connection = True
+            return None
+        except BadJSON:
+            self._error(400, "invalid JSON body", "invalid_request_error")
+            return None
 
     def _media_config(self):
         return wb_settings.media_config(ACCOUNTS_DIR)
@@ -26050,6 +26376,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(400, "enable_anthropic_messages must be true or false", "invalid_request_error")
             wb_settings.set_enable_anthropic_messages(ACCOUNTS_DIR, raw)
             reply["enable_anthropic_messages"] = raw
+        for field, kind in (("tts_enabled", "tts"), ("asr_enabled", "asr")):
+            if field not in payload:
+                continue
+            raw = payload.get(field)
+            if not isinstance(raw, bool):
+                return self._error(
+                    400, "%s must be true or false" % field,
+                    "invalid_request_error")
+            reply[field] = wb_settings.set_audio_enabled(
+                ACCOUNTS_DIR, kind, raw)
         if "model_aliases" in payload:
             try:
                 cleaned = wb_settings.set_model_aliases(
@@ -28822,12 +29158,23 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
         wall = int((time.time() - t_start) * 1000)
-        record_upstream_usage(upstream, model, holder.get("usage"), stream=True, elapsed_ms=wall,
-                     ttft_ms=first_ms,
-                     gen_ms=(wall - first_ms) if first_ms is not None else None,
-                     fp=fp, account=account.uid, realm=realm,
-                     key=self._key_id(), effort=effort,
-                     outcome=("failed" if holder.get("empty_reasoning") else "completed"))
+        if holder.get("failed"):
+            record_error(
+                model, 502,
+                "upstream responses stream returned an error frame",
+                elapsed_ms=wall, account=account.uid,
+                usage=holder.get("usage"), stream=True,
+                ttft_ms=first_ms,
+                gen_ms=(wall - first_ms) if first_ms is not None else None,
+                fp=fp, outcome="failed", realm=realm,
+                key=self._key_id())
+        else:
+            record_upstream_usage(upstream, model, holder.get("usage"), stream=True, elapsed_ms=wall,
+                         ttft_ms=first_ms,
+                         gen_ms=(wall - first_ms) if first_ms is not None else None,
+                         fp=fp, account=account.uid, realm=realm,
+                         key=self._key_id(), effort=effort,
+                         outcome=("failed" if holder.get("empty_reasoning") else "completed"))
         return
 
     def _responses_nonstream_response(self, upstream, model, custom_names, request_meta, fp, account, t_start, namespace_map=None, base_body=None, session_key=None, realm=None, effort=None, allow_web_tools=True):
@@ -29111,11 +29458,22 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
         wall = int((time.time() - t_start) * 1000)
-        record_upstream_usage(upstream, model, holder.get("usage"), stream=True, elapsed_ms=wall,
-                     ttft_ms=first_ms,
-                     gen_ms=(wall - first_ms) if first_ms is not None else None,
-                     fp=fp, account=account.uid, realm=realm,
-                     key=self._key_id(), effort=effort)
+        if holder.get("failed"):
+            record_error(
+                model, 502,
+                "upstream messages stream returned an error frame",
+                elapsed_ms=wall, account=account.uid,
+                usage=holder.get("usage"), stream=True,
+                ttft_ms=first_ms,
+                gen_ms=(wall - first_ms) if first_ms is not None else None,
+                fp=fp, outcome="failed", realm=realm,
+                key=self._key_id())
+        else:
+            record_upstream_usage(upstream, model, holder.get("usage"), stream=True, elapsed_ms=wall,
+                         ttft_ms=first_ms,
+                         gen_ms=(wall - first_ms) if first_ms is not None else None,
+                         fp=fp, account=account.uid, realm=realm,
+                         key=self._key_id(), effort=effort)
         return
 
     def do_POST(self):
@@ -29337,7 +29695,8 @@ class Handler(BaseHTTPRequestHandler):
         # chat 的并发槽，也不进 chat 的模型别名与 body 改写。不在这行放行，它们
         # 会连"开关关着就 404"都走不到——直接被这里判成 not found。
         is_media_route = path in MEDIA_POST_PATHS
-        if not is_account_route and not is_messages_route and not is_media_route                 and path not in (
+        is_audio_route = path in AUDIO_POST_PATHS
+        if not is_account_route and not is_messages_route and not is_media_route and not is_audio_route and path not in (
                     "/v1/chat/completions", "/chat/completions",
                     "/v1/completions", "/completions",
                     "/v1/responses", "/responses",
@@ -29349,11 +29708,20 @@ class Handler(BaseHTTPRequestHandler):
                     401, "missing or invalid API key", "authentication_error")
         elif not self._authorized():
             return
+        if is_audio_route:
+            kind = "tts" if path.endswith("/speech") else "asr"
+            if not wb_settings.audio_enabled(ACCOUNTS_DIR, kind):
+                return self._error(
+                    403,
+                    "%s is disabled; enable it in Settings -> Media"
+                    % ("TTS" if kind == "tts" else "ASR"),
+                    "permission_error")
         if is_media_route and not wb_pool_scope.entry_allows(wb_pool_scope.SCOPE_MEDIA):
             return self._error(
                 403, "这个入口只服务文本模型；图片 / 视频请走媒体号池的入口",
                 "pool_boundary")
-        if not is_media_route and not wb_pool_scope.entry_allows(wb_pool_scope.SCOPE_TEXT):
+        if (not is_media_route
+                and not wb_pool_scope.entry_allows(wb_pool_scope.SCOPE_TEXT)):
             return self._error(
                 503, "这个入口只服务图片 / 视频生成；文本模型请走文本号池的入口",
                 "pool_boundary")
@@ -29368,7 +29736,9 @@ class Handler(BaseHTTPRequestHandler):
                 "Enable it in the Settings panel or set WB_ENABLE_ANTHROPIC_MESSAGES=1 "
                 "to opt in at your own risk (see issue #367).",
                 "invalid_request_error")
-        if is_media_route:
+        if is_audio_route:
+            payload = self._audio_payload_or_error(path)
+        elif is_media_route:
             # 改图的输入图是 data URL，8 MB 原图编码后约 10.7 MB；通用上限
             # （默认 16 MB，还可能被 max_payload_mb 调小）会把一次合法请求判成 413。
             payload = self._payload_or_error_for_media()
@@ -29376,11 +29746,13 @@ class Handler(BaseHTTPRequestHandler):
             payload = self._payload_or_error(allow_list=(path == "/accounts/import"))
         if payload is None:
             return
-        if not is_account_route and not is_media_route:
+        if not is_account_route and not is_media_route and not is_audio_route:
             if self._maybe_web_model(payload, is_messages_route):
                 return
         if is_account_route:
             return self._handle_accounts(path, payload)
+        if is_audio_route:
+            return self._handle_audio_post(path, payload)
         if is_media_route:
             return self._handle_media_post(path, payload)
         try:
@@ -29738,6 +30110,7 @@ class Handler(BaseHTTPRequestHandler):
             leak_filter = LeakedToolCallStreamFilter()
             synthesized_calls = False
             pending_finish = None
+            stream_error = False
             # 写出缓冲：一个读取块里的事件合成一次 write。
             # wfile 是 wbufsize=0 的**无缓冲**文件（StreamRequestHandler 默认），
             # 每个 chunk 直接落成一次 sendall —— 一次 syscall 加一次 GIL 交还。
@@ -29799,6 +30172,17 @@ class Handler(BaseHTTPRequestHandler):
                             maybe = json.loads(data)
                         except Exception:
                             maybe = None
+                        if isinstance(maybe, dict) and isinstance(maybe.get("error"), dict):
+                            err = maybe["error"]
+                            message = str(err.get("message") or err.get("msg")
+                                          or "upstream stream error")
+                            code = err.get("code") or "upstream_stream_error"
+                            pending_finish = "error"
+                            stream_error = True
+                            flush_out()
+                            heartbeat.write(chat_stream_error_frame(
+                                message, code=code))
+                            break
                         if isinstance(maybe, dict):
                             u = maybe.get("usage")
                             if u:
@@ -29851,20 +30235,21 @@ class Handler(BaseHTTPRequestHandler):
                         if not cleaned:
                             continue
                         write_chunk(cleaned)
-                    release(leak_filter.flush())
-                    if synthesized_calls or pending_finish is not None:
-                        write_chunk(chat_finish_chunk(
-                            model, "tool_calls" if synthesized_calls else pending_finish, chunk_id=stream_chunk_id))
-                    if last_usage is not None:
-                        write_chunk(chat_usage_chunk(
-                            model, last_usage, chunk_id=stream_chunk_id))
-                    flush_out()
-                    if not emitted:
-                        err = json.dumps({"error": {
-                            "message": "empty upstream stream",
-                            "type": "server_error"}})
-                        heartbeat.write(f"data: {err}\n\n".encode("utf-8"))
-                    heartbeat.write(b"data: [DONE]\n\n")
+                    if not stream_error:
+                        release(leak_filter.flush())
+                        if synthesized_calls or pending_finish is not None:
+                            write_chunk(chat_finish_chunk(
+                                model, "tool_calls" if synthesized_calls else pending_finish, chunk_id=stream_chunk_id))
+                        if last_usage is not None:
+                            write_chunk(chat_usage_chunk(
+                                model, last_usage, chunk_id=stream_chunk_id))
+                        flush_out()
+                        if not emitted:
+                            err = json.dumps({"error": {
+                                "message": "empty upstream stream",
+                                "type": "server_error"}})
+                            heartbeat.write(f"data: {err}\n\n".encode("utf-8"))
+                        heartbeat.write(b"data: [DONE]\n\n")
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 # Client hung up; still account for what upstream produced.
                 wall = int((time.time() - t_start) * 1000)

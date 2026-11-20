@@ -413,10 +413,17 @@ class GrowthPrereqTests(unittest.TestCase):
 
         self.assertEqual(earned, 100)
         events = next(value for kind, value in calls if kind == "report")
-        self.assertEqual([e["panelAction"] for e in events],
-                         ["click", "success"])
-        self.assertTrue(all(e["eventCode"] == "skill_share_channel_action"
-                            for e in events))
+        self.assertEqual(1, len(events))
+        event = events[0]
+        self.assertEqual("skill_share_channel_action", event["eventCode"])
+        self.assertEqual("wechat", event["action"])
+        self.assertEqual("success", event["panelAction"])
+        self.assertEqual("mini_program_card", event["panelType"])
+        self.assertEqual("channel-1", event["id"])
+        self.assertEqual("market", event["skillSource"])
+        self.assertEqual("skill_detail", event["entry"])
+        self.assertEqual("safe", event["status"])
+        self.assertTrue(event["actionSuccessful"])
         kinds = [kind for kind, _value in calls]
         self.assertLess(kinds.index("report"), kinds.index("claim"))
 
@@ -432,6 +439,39 @@ class GrowthPrereqTests(unittest.TestCase):
                 return _Resp({"code": 0, "data": {
                     "share_code": "share-1",
                     "ways": [{"share_way": "link", "resource_ref": ""}],
+                }})
+            raise AssertionError(req.full_url)
+
+        original = (T._accounts.urlopen, T._report_desktop_events,
+                    T.claim_task)
+        T._accounts.urlopen = fake_urlopen
+        T._report_desktop_events = lambda acc, events: calls.append("report")
+        T.claim_task = lambda acc, code: calls.append("claim")
+        try:
+            earned = T._progress_one(
+                FakeAccount(), _task("skill_share", status="accepted"),
+                [], 0)
+        finally:
+            (T._accounts.urlopen, T._report_desktop_events,
+             T.claim_task) = original
+        self.assertEqual(earned, 0)
+        self.assertEqual(calls, [])
+
+    def test_skill_share_without_channel_id_does_not_report_or_claim(self):
+        calls = []
+
+        def fake_urlopen(req, timeout=20, proxy=""):
+            if req.full_url == T.SKILL_MARKET_URL:
+                return _Resp({"code": 0, "data": {"skills": [{
+                    "skill_id": "skill-test-1", "display_name_zh": "测试技能",
+                }]}})
+            if req.full_url == T.SKILL_SHARE_CHANNEL_URL:
+                return _Resp({"code": 0, "data": {
+                    "share_code": "share-1",
+                    "ways": [{
+                        "share_way": "link",
+                        "resource_ref": "https://example.test/share",
+                    }],
                 }})
             raise AssertionError(req.full_url)
 

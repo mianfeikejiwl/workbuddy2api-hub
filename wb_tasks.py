@@ -961,32 +961,39 @@ def _create_skill_share_channel(account, skill):
                 "msg": str(payload.get("msg") or "创建分享渠道失败")[:160]}
     data = payload.get("data") or {}
     share_code = str(data.get("share_code") or "").strip()
+    channel_id = str(data.get("channel_id") or "").strip()
     link = ""
     for way in data.get("ways") or []:
         if isinstance(way, dict) and way.get("share_way") == "link":
             link = str(way.get("resource_ref") or "").strip()
             break
-    if not share_code or not link:
+    if not share_code or not link or not channel_id:
         return {"ok": False, "status": status,
-                "msg": "分享接口缺少 share_code 或 link"}
+                "msg": "分享接口缺少 channel_id、share_code 或 link"}
     return {"ok": True, "share_code": share_code,
-            "channel_id": str(data.get("channel_id") or "")}
+            "channel_id": channel_id}
 
 
-def _skill_share_channel_events(skill_id, skill_name, share_code):
+def _skill_share_channel_events(skill_id, skill_name, channel_id):
+    """The single verified success event for a real share channel.
+
+    The upstream counts ``wechat/success`` against the channel id returned by
+    the share API. The old ``link/click`` + ``clipboard`` pair never advanced
+    the task, so keep this event shape in one place.
+    """
     common = {
         "skillId": skill_id,
         "skillName": skill_name,
         "skillType": "market",
+        "skillSource": "market",
     }
     now = int(time.time() * 1000)
     return [
         dict(common, eventCode="skill_share_channel_action",
-             action="link", panelAction="click", panelType="clipboard",
-             isSuccessful=True, cost=0, id=share_code, actionAt=now),
-        dict(common, eventCode="skill_share_channel_action",
-             action="link", panelAction="success", panelType="clipboard",
-             isSuccessful=True, cost=0, id=share_code, actionAt=now),
+             action="wechat", panelAction="success",
+             panelType="mini_program_card", isSuccessful=True, cost=0,
+             id=channel_id, actionAt=now, entry="skill_detail",
+             status="safe", actionSuccessful=True),
     ]
 
 
@@ -1050,7 +1057,7 @@ def _run_skill_share_task(account, t, logs, gap, claim=True):
                     % (name, channel.get("msg") or "未知原因"))
         return 0
     events = _skill_share_channel_events(
-        skill["id"], skill["name"], channel["share_code"])
+        skill["id"], skill["name"], channel["channel_id"])
     if not _report_desktop_events(account, events):
         logs.append("! 任务 [%s] 渠道已创建但事件上报失败，不领奖" % name)
         return 0

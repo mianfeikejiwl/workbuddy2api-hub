@@ -1994,6 +1994,28 @@ def set_enable_anthropic_messages(accounts_dir, enabled):
     return enabled
 
 
+def audio_enabled(accounts_dir, kind):
+    """Whether the TTS or ASR endpoint is exposed by this gateway.
+
+    Both endpoints are opt-in: they spend the same account credits as chat,
+    and an installation that only wants text should not accidentally expose
+    them to every client holding an API key.
+    """
+    key = "tts_enabled" if kind == "tts" else "asr_enabled"
+    return load(accounts_dir).get(key) is True
+
+
+def set_audio_enabled(accounts_dir, kind, enabled):
+    """Persist one audio capability switch and return its boolean value."""
+    key = "tts_enabled" if kind == "tts" else "asr_enabled"
+    enabled = bool(enabled)
+    with _lock:
+        data = load(accounts_dir)
+        data[key] = enabled
+        save(accounts_dir, data)
+    return enabled
+
+
 def filter_models_by_key(accounts_dir):
     """Whether /v1/models hides models the requesting key may not use.
 

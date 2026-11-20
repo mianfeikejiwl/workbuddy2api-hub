@@ -558,6 +558,28 @@ def jwt_uid(token):
 def jwt_issuer(token):
     return str(_jwt_claims(token).get("iss") or "")
 
+
+def sanitize_header_value(value):
+    """Return a header-safe value or an empty string.
+
+    Device tokens are imported from user files and may contain a newline or a
+    non-ASCII character. Passing those to ``http.client`` raises
+    UnicodeEncodeError (or lets a newline split the header), so a malformed
+    value must degrade to "no device token" instead of breaking every request.
+    The account file is left untouched so a later corrected token can be used.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        text.encode("ascii")
+    except UnicodeEncodeError:
+        return ""
+    if "\r" in text or "\n" in text:
+        return ""
+    return text
+
+
 def normalize_epoch(value):
     try:
         number = float(value)
@@ -2224,12 +2246,12 @@ class Account(object):
         """Optional X-Device-Token: account value, then literal, then file."""
         token = str(getattr(self, "device_token", "") or "").strip()
         if token:
-            return token
+            return sanitize_header_value(token)
         directory = (getattr(self, "accounts_dir", "")
                      or (os.path.dirname(self.path) if self.path else ""))
         if not directory:
             return ""
-        return resolve_device_token(directory)
+        return sanitize_header_value(resolve_device_token(directory))
 
     def sync_nickname(self):
         """Manual web-console nickname refresh.
