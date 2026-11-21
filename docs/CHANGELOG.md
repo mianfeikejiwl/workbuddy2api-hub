@@ -1,3 +1,10 @@
+## v2.2.1
+
+- **修复 Docker 镜像缺少 `wb_webgateway/`**：Dockerfile 只复制了 `wb_*.py`，网页工具网关在容器里会因 `No module named 'wb_webgateway'` 静默降级，`/health` 仍返回 200。镜像现在显式复制整个子包，并新增 Dockerfile 回归断言。
+- **修复便携包与 OpenWrt 包缺少 `wb_webgateway/`**：`release/portable.txt` 原先只登记 `wb_*.py`，`.ipk/.apk` 构建也只收集 `wb_*.py`。便携包清单、OpenWrt 安装规则和两种打包脚本现在都包含完整的 `wb_webgateway` 子包，并新增覆盖嵌套模块的发布资产测试。
+- **便携包自动更新改用新仓库**：`wb_update_portable.REPO_DEFAULT` 仍指向已停用的旧仓库，面板下载更新包会 404；现已切换到 `niyouqianma/workbuddy2api-hub`，并新增默认仓库断言。
+- 全量测试：**312 个套件：234 个 Python + 78 个 JS**。GitHub CI 通过 Ubuntu 3.9 / 3.12、Windows 3.12 完整矩阵后发布。
+
 ## v2.2.0
 
 - **OpenAI 兼容语音接口**：新增 `POST /v1/audio/speech` 与 `POST /v1/audio/transcriptions`。TTS 支持 WAV / PCM（上游不提供 MP3，请求 MP3 会明确返回 400），ASR 支持 multipart `file` / `audio` 字段与 3 MB 上限；`15052` 返回 413，`15053` 返回 400。

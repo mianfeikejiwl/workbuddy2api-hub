@@ -56,6 +56,9 @@ def new_files(version):
 
 
 class ChecksumTests(unittest.TestCase):
+    def test_default_repository_is_the_migrated_repository(self):
+        self.assertEqual(U.REPO_DEFAULT, "niyouqianma/workbuddy2api-hub")
+
     def test_parse_checksums(self):
         text = "%s  workbuddy2api-hub-v2.0.0.zip\n%s *other.ipk\n" % ("a" * 64, "b" * 64)
         parsed = U.parse_checksums(text)

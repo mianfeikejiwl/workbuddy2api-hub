@@ -21,7 +21,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=workbuddy2api
-PKG_VERSION:=2.2.0
+PKG_VERSION:=2.2.1
 PKG_RELEASE:=1
 
 PKG_LICENSE:=MIT
@@ -99,6 +99,12 @@ endef
 define Package/workbuddy2api/install
 	$(INSTALL_DIR) $(1)/usr/lib/workbuddy2api
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/usr/lib/workbuddy2api/wb_*.py $(1)/usr/lib/workbuddy2api/
+	$(INSTALL_DIR) $(1)/usr/lib/workbuddy2api/wb_webgateway
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/usr/lib/workbuddy2api/wb_webgateway/*.py $(1)/usr/lib/workbuddy2api/wb_webgateway/
+	$(INSTALL_DIR) $(1)/usr/lib/workbuddy2api/wb_webgateway/protocols
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/usr/lib/workbuddy2api/wb_webgateway/protocols/*.py $(1)/usr/lib/workbuddy2api/wb_webgateway/protocols/
+	$(INSTALL_DIR) $(1)/usr/lib/workbuddy2api/wb_webgateway/providers
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/usr/lib/workbuddy2api/wb_webgateway/providers/*.py $(1)/usr/lib/workbuddy2api/wb_webgateway/providers/
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/usr/lib/workbuddy2api/dashboard.html $(1)/usr/lib/workbuddy2api/
 	[ -z "$(BRIDGE_BINS)" ] || { \
 		$(INSTALL_DIR) $(1)/usr/lib/workbuddy2api/bin; \

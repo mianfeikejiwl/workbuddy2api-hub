@@ -259,6 +259,17 @@ class ManifestTests(unittest.TestCase):
         listed = set(tools.read_manifest())
         self.assertEqual([n for n in on_disk if n not in listed], [])
 
+    def test_every_webgateway_module_is_listed(self):
+        # wb_proxy imports wb_webgateway directly, so the portable ZIP must
+        # carry the whole package and every nested provider/protocol module.
+        on_disk = sorted(
+            os.path.relpath(path, ROOT).replace("\\", "/")
+            for path in glob.glob(os.path.join(ROOT, "wb_webgateway", "**", "*.py"),
+                                  recursive=True))
+        self.assertTrue(on_disk, "仓库里没有 wb_webgateway/*.py？")
+        listed = set(tools.read_manifest())
+        self.assertEqual([n for n in on_disk if n not in listed], [])
+
     def test_launchers_and_dashboard_are_listed(self):
         listed = tools.read_manifest()
         for name in ("dashboard.html", "console_tail.py", "wb_proxy.py", "README.md", "LICENSE",
@@ -506,6 +517,9 @@ class PortableZipTests(unittest.TestCase):
             # launchers and the bundled pricing snapshot are portable-only.
             app = manifest["profiles"]["app"]
             self.assertIn("wb_proxy.py", app)
+            self.assertIn("wb_webgateway/__init__.py", app)
+            self.assertIn("wb_webgateway/protocols/anthropic.py", app)
+            self.assertIn("wb_webgateway/providers/workbuddy.py", app)
             self.assertIn("dashboard.html", app)
             self.assertNotIn("pricing/pricing.json", app)
             self.assertNotIn("start-wb-proxy.bat", app)
