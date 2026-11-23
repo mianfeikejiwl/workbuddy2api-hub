@@ -14,6 +14,14 @@ class ProviderError(Exception):
         self.retryable = bool(retryable)
 
 
+class FetchTargetError(ProviderError):
+    """A refusal or connection failure specific to the requested website."""
+
+    def __init__(self, code, message):
+        super().__init__(message, retryable=False)
+        self.code = code
+
+
 class Provider(object):
     """provider 基类。子类至少实现 search 或 fetch。"""
 

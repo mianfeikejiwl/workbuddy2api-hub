@@ -204,11 +204,11 @@ check(/acctScopeUids\(\)[\s\S]{0,200}filteredAccountsForBulk\(\)/.test(script),
 check(!/if\(!POOL_SEPARATION_EFFECTIVE\) return \[\];/.test(script),
   'acctSelUids 不应再受号池隔离开关限制');
 
-// 号池筛选与「移入」按钮始终上屏：poolScope 是账号归属，隔离关着时只是不
-// 限制派发，不代表这个字段不可见 / 不可改。筛选状态也不再跟开关走——否则
-// 会出现「控件藏了、POOL_FILTER 还在过滤」的 #850 同类问题。
-check(!/id="poolToolsGroup"[^>]*\bhidden\b/.test(html),
-  '号池工具组不应默认隐藏');
+// 关闭隔离时隐藏号池工具并清除号池筛选，避免隐藏的筛选条件继续生效。
+check(/id="poolToolsGroup"[^>]*\bhidden\b/.test(html),
+  '号池工具组应默认隐藏');
+check(/group\.hidden = !enabled/.test(script) && /!enabled && POOL_FILTER !== 'all'\) poolFilter\('all'\)/.test(script),
+  '号池工具组应跟随隔离状态，关闭时恢复全部号池');
 check(!/POOL_SEPARATION_EFFECTIVE/.test(script),
   '号池筛选与批量作用范围不应再依赖隔离开关');
 check(/<select id="poolFilterSelect"[^>]*onchange="poolFilter\(this\.value\)"/.test(html),

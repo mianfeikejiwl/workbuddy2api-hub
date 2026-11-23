@@ -15,7 +15,7 @@ import threading
 import time
 
 from . import ir
-from .providers.base import ProviderError
+from .providers.base import FetchTargetError, ProviderError
 
 MAX_CONSECUTIVE_FAILURES = 3
 COOLDOWN_SECONDS = 60.0
@@ -155,6 +155,10 @@ class Registry(object):
                 continue
             try:
                 item = provider.fetch(req, self._provider_ctx(ctx, entry))
+            except FetchTargetError as exc:
+                ir.note_error(response, provider.name, str(exc))
+                response["errors"][-1]["code"] = exc.code
+                continue
             except ProviderError as exc:
                 ir.note_error(response, provider.name, str(exc))
                 self._record_failure(provider.name)

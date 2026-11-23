@@ -30,12 +30,16 @@ import urllib.request
 import uuid
 
 from .. import ir
-from .base import Provider, ProviderError
+from .base import FetchTargetError, Provider, ProviderError
 
 SEARCH_PATH = "/agenttool/v1/search"
 FETCH_PATH = "/agenttool/v1/webfetch"
 DEFAULT_TIMEOUT_MS = 20000
 FETCH_MAX_CHARS = 100000
+_FETCH_TARGET_ERRORS = {
+    "15021": ("target_policy_denied", "WorkBuddy cannot fetch this website under its routing policy (15021)"),
+    "15022": ("target_unreachable", "WorkBuddy could not connect to the target website (15022)"),
+}
 
 #: time_range（能力端点的 day/week/month/year）→ 官方 freshness（dN/mN/yN）
 TIME_RANGE_TO_FRESHNESS = {"day": "d1", "week": "d7", "month": "m1", "year": "y1"}
@@ -48,6 +52,16 @@ class _AccountRejected(Exception):
         super().__init__(message)
         self.status = int(status or 0)
         self.retryable = bool(retryable)
+
+
+def _check_fetch_target_error(path, payload):
+    if path != FETCH_PATH or not isinstance(payload, dict):
+        return
+    nested = payload.get("error")
+    code = str(payload.get("code") or (nested.get("code") if isinstance(nested, dict) else ""))
+    failure = _FETCH_TARGET_ERRORS.get(code)
+    if failure:
+        raise FetchTargetError(*failure)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -284,9 +298,17 @@ class WorkbuddyProvider(Provider):
             status = int(getattr(exc, "code", 0) or 0)
             detail = ""
             try:
-                detail = exc.read().decode("utf-8", "replace")[:200].strip()
+                with exc:
+                    detail = exc.read(4096).decode("utf-8", "replace").strip()
             except Exception:
                 pass
+            if path == FETCH_PATH and status not in (401, 429):
+                try:
+                    payload = json.loads(detail)
+                except ValueError:
+                    payload = None
+                _check_fetch_target_error(path, payload)
+            detail = detail[:200]
             raise _AccountRejected(
                 status,
                 "HTTP %s%s" % (status, (": " + detail) if detail else ""),
@@ -300,6 +322,7 @@ class WorkbuddyProvider(Provider):
             raise ProviderError("upstream returned non-JSON")
         if not isinstance(payload, dict):
             raise ProviderError("upstream returned an unexpected payload")
+        _check_fetch_target_error(path, payload)
         code = payload.get("code")
         if code not in (0, None):
             raise ProviderError("upstream error %s: %s"

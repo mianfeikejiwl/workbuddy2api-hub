@@ -201,6 +201,7 @@ def pcm_to_wav(pcm, sample_rate=TTS_SAMPLE_RATE, channels=TTS_CHANNELS,
 def collect_tts_pcm(source):
     """Read the upstream SSE stream and return the concatenated PCM bytes."""
     chunks = []
+    done = False
     for obj in iter_sse_json(source):
         message, code = upstream_error_message(obj)
         if obj.get("type") == "error" or obj.get("error"):
@@ -226,10 +227,17 @@ def collect_tts_pcm(source):
                 raise AudioError(502, "invalid_tts_audio",
                                  "TTS upstream returned invalid base64 audio",
                                  "server_error")
+        if event_type == "speech.audio.done":
+            done = True
+            break
     pcm = b"".join(chunks)
     if not pcm:
         raise AudioError(502, "empty_tts_audio",
                          "TTS upstream returned no audio data",
+                         "server_error")
+    if not done:
+        raise AudioError(502, "tts_stream_truncated",
+                         "TTS upstream closed before speech.audio.done",
                          "server_error")
     return pcm
 
@@ -241,13 +249,8 @@ def build_tts_response(pcm, fmt):
     return bytes(pcm or b""), "audio/pcm"
 
 
-def parse_multipart(body, content_type):
-    """Parse a small multipart/form-data body without external dependencies.
-
-    Only the audio file part is needed. The caller enforces the hard byte cap
-    before calling this function, so keeping the whole request in memory is
-    bounded by 3 MB.
-    """
+def _multipart_parts(body, content_type):
+    """Yield form fields from the request body already capped by the caller."""
     text = str(content_type or "")
     marker = "boundary="
     pos = text.lower().find(marker)
@@ -289,9 +292,33 @@ def parse_multipart(body, content_type):
             if piece.lower().startswith("name="):
                 field = piece[5:].strip().strip('"')
                 break
+        if field:
+            yield field, data
+
+
+def parse_multipart(body, content_type):
+    """Return the first audio file part."""
+    for field, data in _multipart_parts(body, content_type):
         if field in ASR_FIELD_NAMES:
             return field, data
     raise AudioError(400, "missing_audio", "multipart field file or audio is required")
+
+
+def parse_asr_multipart(body, content_type):
+    """Return the audio and the local response format; never forward form options."""
+    audio = None
+    response_format = "json"
+    for field, data in _multipart_parts(body, content_type):
+        if field in ASR_FIELD_NAMES and audio is None:
+            audio = data
+        elif field == "response_format":
+            response_format = data.decode("utf-8", "replace").strip().lower() or "json"
+            if response_format not in ("json", "text"):
+                raise AudioError(400, "unsupported_audio_format",
+                                 "response_format must be json or text")
+    if audio is None:
+        raise AudioError(400, "missing_audio", "multipart field file or audio is required")
+    return audio, response_format
 
 
 def build_asr_multipart(audio, filename="audio.wav", mime="audio/wav"):

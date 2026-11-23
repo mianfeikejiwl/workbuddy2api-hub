@@ -84,6 +84,15 @@ class TtsStreamTests(unittest.TestCase):
         self.assertEqual(caught.exception.status, 400)
         self.assertEqual(caught.exception.err_type, "invalid_request_error")
 
+    def test_partial_audio_is_never_a_success_without_audio_done(self):
+        delta = self.frame({"type": "speech.audio.delta", "audio": {"data": "YWI="}})
+        for tail in ([], [b"data: [DONE]\n\n"]):
+            with self.subTest(tail=tail):
+                with self.assertRaises(wb_audio.AudioError) as caught:
+                    wb_audio.collect_tts_pcm([delta, *tail])
+                self.assertEqual(caught.exception.status, 502)
+                self.assertEqual(caught.exception.code, "tts_stream_truncated")
+
     def test_empty_or_invalid_audio_is_502(self):
         with self.assertRaises(wb_audio.AudioError) as caught:
             wb_audio.collect_tts_pcm([b"data: [DONE]\n\n"])
@@ -127,6 +136,22 @@ class AsrTests(unittest.TestCase):
             with self.assertRaises(wb_audio.AudioError) as caught:
                 wb_audio.parse_multipart(body, content_type)
             self.assertEqual(caught.exception.status, 400)
+
+    def test_response_format_after_the_file(self):
+        body, content_type = wb_audio.build_asr_multipart(b"RIFFpayload")
+        boundary = content_type.split("boundary=", 1)[1].encode("ascii")
+        suffix = b"--" + boundary + b"--\r\n"
+        option = (b"--" + boundary
+                  + b'\r\nContent-Disposition: form-data; name="response_format"\r\n\r\n')
+        self.assertEqual(wb_audio.parse_asr_multipart(body, content_type),
+                         (b"RIFFpayload", "json"))
+        self.assertEqual(wb_audio.parse_asr_multipart(
+            body[:-len(suffix)] + option + b" text \r\n" + suffix, content_type),
+            (b"RIFFpayload", "text"))
+        with self.assertRaises(wb_audio.AudioError) as caught:
+            wb_audio.parse_asr_multipart(
+                body[:-len(suffix)] + option + b"srt\r\n" + suffix, content_type)
+        self.assertEqual(caught.exception.status, 400)
 
     def test_asr_error_codes_map_to_client_errors(self):
         cases = (

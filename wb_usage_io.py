@@ -85,6 +85,11 @@ _archive_lock = threading.Lock()
 _INDEX_BLOCK_BYTES = 1024 * 1024
 
 
+def _invalidate_archives(path):
+    with _archive_lock:
+        _archive_cache.pop(path, None)
+
+
 def _archives(path):
     directory = path + ".segments"
     with _archive_lock:
@@ -352,6 +357,7 @@ def rotate(path, max_bytes):
             except PermissionError:
                 # A Windows reader may still have the active segment open.
                 return False
+            _invalidate_archives(path)
             return True
         finally:
             _unlock(lock_fd)

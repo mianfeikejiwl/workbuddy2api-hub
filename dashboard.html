@@ -158,6 +158,16 @@ section{background:var(--panel);border:1px solid var(--line);border-radius:14px;
    区块自带的 padding-top 挪给吸顶的首行（它要盖住滚上来的内容），故置 0；
    首行的 margin 也折成 padding，否则吸顶后下方那条 margin 会漏出滚动内容。 */
 body.win-capped .main-page section{max-height:var(--win-max-h);overflow-y:auto;padding-top:0}
+/* 账号区保留筛选和操作栏，滚动限制应用到账号表本身。 */
+body.win-capped .main-page #workbuddyAccountsSection{max-height:none;overflow:visible}
+body.win-capped #accounts .table-wrap{max-height:max(180px, calc(var(--win-max-h) - 180px));overflow:auto}
+@media (min-width:641px){
+  body.win-capped #accounts .account-cards{border-collapse:separate;border-spacing:0}
+  body.win-capped #accounts .account-cards thead th{position:sticky;top:0;z-index:10;
+    background:var(--panel2);box-shadow:0 2px 0 var(--panel2)!important}
+  body.win-capped #accounts .account-cards thead th:nth-child(-n+3),
+  body.win-capped #accounts .account-cards thead th:last-child{z-index:11}
+}
 /* 看板页的面板用 #pageAnalytics .panel{overflow:hidden}（ID 选择器）做圆角
    裁剪，优先级压过上一条，限高模式下 section 的滚动被裁掉——内容超出限高
    后既看不到也滚不动。这里把滚动权还给限高模式下的看板面板。 */
@@ -467,6 +477,12 @@ body.pricing-off #kpiCostCard{display:none}
    直接成为 .toolbar 的 flex 子项，分组胶囊与组间距都不变。移动端才变成一个可
    折叠的整块（见 ≤640px 规则）。 */
 .tb-advanced{display:contents}
+@media (min-width:641px){
+  #accountToolbar{flex-wrap:nowrap;align-items:center;gap:3px;overflow-x:auto;padding-bottom:4px}
+  #accountToolbar .tb-group{flex-shrink:0;gap:2px;padding:2px}
+  #accountToolbar .tb-bulk-trio{gap:2px}
+  #accountToolbar button{flex-shrink:0;white-space:nowrap;font-size:10px;padding:6px 4px}
+}
 /* 折叠箭头按钮只在移动端出现，桌面端由 display:none 收掉。 */
 .tb-more-toggle{display:none}
 /* 收起时箭头朝下（可展开），展开后朝上（可收起）。 */
@@ -2788,6 +2804,7 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     'Buddy 加油站签到、猫猫旅行、连登管家与抽奖、夜猫子任务；各项每日额度互不占用。': 'Buddy refuel check-in, cat travel, streak rewards and lottery, and the night-owl task; each daily quota is independent.',
     '国内任务执行中...': 'Running China tasks...',
     // 页签名与区块标题：词级词典缺了「福利」，整体只能拼出「Taskand福利」。
+    '自动化任务': 'Automation tasks',
     '任务与福利': 'Tasks & rewards',
     '国际版每日活跃福利': 'Daily activity rewards (Global)',
     '已获取福利总积分': 'Total reward credits earned',
@@ -3111,7 +3128,7 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     '(默认)': '(default)',
     '已开启：账号独立成一个页签': 'On: accounts get their own tab',
     '已关闭：账号与网关回到同一页': 'Off: accounts are back on the gateway page',
-    '关闭（默认）时，账号列表、「当前禁用」与「签到与活跃记录」留在「网关与账号」页，位置与拆分前一致；开启后它们搬到独立的「账号」页，顶部页签变成 网关 → 账号 → 数据看板 → 智能体配置 → 设置 → 运行日志，网关页只剩网关自己的东西——账号多起来（国际版十几个）之后翻起来更短。两侧的区块与行为完全一样，只是分在哪一页；关闭后 ?tab=accounts 的书签会退回「网关与账号」页。': 'Off (the default) keeps the account list, "currently disabled" and the check-in & activity log on the "Gateway & accounts" page, where they were before the split; on moves them to an "Accounts" page of their own and the top tabs become Gateway -> Accounts -> Analytics -> Agents -> Settings -> Logs, leaving the gateway page with only gateway content - shorter to page through once you run a dozen Global accounts. The sections and their behaviour are the same either way, only the page they live on differs; with it off a ?tab=accounts bookmark falls back to the "Gateway & accounts" page.',
+    '关闭（默认）时，账号列表与「当前禁用」留在「网关与账号」页，位置与拆分前一致；开启后它们搬到独立的「账号」页，顶部页签变成 网关 → 账号 → 数据看板 → 智能体配置 → 设置 → 运行日志，网关页只剩网关自己的东西——账号多起来（国际版十几个）之后翻起来更短。两侧的区块与行为完全一样，只是分在哪一页；关闭后 ?tab=accounts 的书签会退回「网关与账号」页。': 'Off (the default) keeps the account list and "currently disabled" on the "Gateway & accounts" page, where they were before the split; on moves them to an "Accounts" page of their own and the top tabs become Gateway -> Accounts -> Analytics -> Agents -> Settings -> Logs, leaving the gateway page with only gateway content - shorter to page through once you run a dozen Global accounts. The sections and their behaviour are the same either way, only the page they live on differs; with it off a ?tab=accounts bookmark falls back to the "Gateway & accounts" page.',
     '面板窗口限高': 'Panel window height cap',
     '每个窗口（区块）超过这个高度时在窗口内部滚动，不再把整页拉长；滚动时标题行固定在窗口顶部。单位像素；填 0 表示不限。': 'Each window scrolls internally once it is taller than this, instead of stretching the page; its title row stays pinned to the top while scrolling. In pixels; 0 means no limit.',
     '窗口最高高度（像素，0 = 不限）': 'Max window height (px, 0 = no limit)',
@@ -3124,12 +3141,19 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     '全选': 'Select all',
     '全不选': 'Clear all',
     '反选': 'Invert',
+    '保存勾选': 'Save selection',
+    '保存中...': 'Saving...',
     '把当前清单里的模型全部勾上（与「从未改过勾选」的默认态等价）': 'Tick every model in the current catalog - the same as the default state of never having touched the selection',
     '取消全部勾选：DSH 等读取模型清单的客户端会被拦下，不会写出一份空清单': 'Untick everything: clients that read the model list, such as DSH, are stopped instead of being handed an empty list',
     '按当前勾选状态取反：只想排除个别模型时比逐个点快': 'Flip the current ticks: quicker than clicking one by one when you only want to exclude a few models',
     '勾选结果存在网关设置里，对所有版本视图生效；未勾选只影响一键配置写入客户端的模型清单，网关本身照常提供这些模型。': 'The selection is stored in the gateway settings and applies to every realm view; unticking only affects the model list written by the one-click configuration - the gateway still serves those models.',
+    '勾选结果存在网关设置里，对所有版本视图生效；未勾选只影响一键配置写入客户端的模型清单。': 'The selection is stored in the gateway settings and applies to every realm view; unticking only affects the model list written by one-click setup.',
+    '勾选后点击保存，再重新一键配置并重启客户端。未保存过的国际版清单会根据账号档位默认选择 Pro Only 模型。': 'Tick models and click Save selection, then re-run one-click setup and restart the client. Unsaved international catalogs auto-tick Pro Only models only when an enabled international Pro account is present.',
     '勾选后该模型才会写入 DSH 等客户端的一键配置': 'The model is written into the one-click configuration for DSH and other clients only when ticked',
     ' · 已选 ': ' · selected ',
+    '模型勾选已保存': 'Model selection saved',
+    '模型勾选已是最新': 'Model selection is up to date',
+    '读取另一出口模型失败，未保存：': 'Failed to read other exit models, not saved: ',
     '模型勾选保存失败：': 'Saving the model selection failed: ',
     '请先在「网关模型清单」勾选至少一个模型': 'Tick at least one model in the Gateway model catalog first',
     '当前生效': 'In effect',
@@ -3704,7 +3728,7 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     '编辑': 'Edit',
     '编辑 API Key': 'Edit API key',
     '管理代理出口与网关模型，查看当日调用量、估算花费、成功率与最近请求。': 'Manage proxy exits and the gateway model list; review call volume, estimated cost, success rate and recent requests.',
-    '管理账号池：添加/导入/导出、启用停用、凭证与积分刷新、代理出口绑定，以及签到与每日活跃记录。': 'Manage the account pool: add/import/export, enable/disable, credential and credit refresh, exit binding, plus check-in and daily activity records.',
+    '管理账号池：添加/导入/导出、启用停用、凭证与积分刷新与代理出口绑定。': 'Manage the account pool: add/import/export, enable/disable, credential and credit refresh, and exit binding.',
     '网关实时目录里新增的模型，上游新上架的名字无需改代码就会进入下一轮取价；两次取价之间就被调用的新模型，第一笔请求即按内存里的目录': 'models newly added to the live catalog of the gateway; names upstream has just listed enter the next price fetch with no code change, and a new model called between two fetches is',
     '网关平均生成速度': 'Gateway average generation speed',
     '网关日志已清空': 'Gateway logs cleared',
@@ -4605,12 +4629,19 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     "全选": "全選",
     "全不选": "全不選",
     "反选": "反選",
+    "保存勾选": "儲存勾選",
+    "保存中...": "儲存中...",
     "把当前清单里的模型全部勾上（与「从未改过勾选」的默认态等价）": "把當前清單裡的模型全部勾上（與「從未改過勾選」的預設態等價）",
     "取消全部勾选：DSH 等读取模型清单的客户端会被拦下，不会写出一份空清单": "取消全部勾選：DSH 等讀取模型清單的客戶端會被攔下，不會寫出一份空清單",
     "按当前勾选状态取反：只想排除个别模型时比逐个点快": "按當前勾選狀態取反：只想排除個別模型時比逐個點快",
     "勾选结果存在网关设置里，对所有版本视图生效；未勾选只影响一键配置写入客户端的模型清单，网关本身照常提供这些模型。": "勾選結果存在閘道設定裡，對所有版本檢視生效；未勾選只影響一鍵配置寫入客戶端的模型清單，閘道本身照常提供這些模型。",
+    "勾选结果存在网关设置里，对所有版本视图生效；未勾选只影响一键配置写入客户端的模型清单。": "勾選結果存在閘道設定裡，對所有版本檢視生效；未勾選只影響一鍵配置寫入客戶端的模型清單。",
+    "勾选后点击保存，再重新一键配置并重启客户端。未保存过的国际版清单会根据账号档位默认选择 Pro Only 模型。": "勾選後點擊儲存，再重新一鍵配置並重啟客戶端。未儲存過的國際版清單會根據帳號檔位預設勾選 Pro Only 模型。",
     "勾选后该模型才会写入 DSH 等客户端的一键配置": "勾選後該模型才會寫入 DSH 等客戶端的一鍵配置",
     " · 已选 ": " · 已選 ",
+    "模型勾选已保存": "模型勾選已儲存",
+    "模型勾选已是最新": "模型勾選已是最新",
+    "读取另一出口模型失败，未保存：": "讀取另一出口模型失敗，未儲存：",
     "模型勾选保存失败：": "模型勾選儲存失敗：",
     "请先在「网关模型清单」勾选至少一个模型": "請先在「閘道模型清單」勾選至少一個模型",
     "网络异常:": "網路異常:",
@@ -5649,6 +5680,24 @@ html[data-ui="next"] .table-wrap{border:1px solid var(--line);border-radius:12px
 html[data-ui="next"] .table-wrap table{border:0}
 html[data-ui="next"] .mono{font-variant-numeric:tabular-nums}
 
+/* 限高时让列表自身滚动，筛选、操作和分页留在表格外。 */
+body.win-capped .main-page :is(#recentRequestsSection,#gatewayModelsSection,#workbuddyActivitySection,#workbuddyDisabledSection,#codeartsAccountsSection,#sectionDailyTasks,#sectionGrowthTasks,#mediaModelsSection,#mediaTasksSection){max-height:none;overflow:visible}
+body.win-capped .main-page #sectionDailyTasks{padding-top:18px}
+body.win-capped .main-page #sectionDailyTasks>:first-child{position:static;background:transparent;padding-top:0;padding-bottom:0;margin-bottom:14px!important}
+@media (max-width:860px){body.win-capped .main-page #sectionDailyTasks{padding-top:14px}}
+body.win-capped :is(#recent,#gatewayModelsSection .next-table-scroll,#activityList,#disabledList .table-wrap,#codeartsAccounts .table-wrap,#growthTableScroll,#mediaModelsList,#mediaTasksList){
+  max-height:max(180px, calc(var(--win-max-h) - 180px));overflow:auto
+}
+@media (min-width:641px){
+  body.win-capped :is(#recent,#gatewayModelsSection .next-table-scroll,#activityList,#disabledList .table-wrap,#codeartsAccounts .table-wrap,#growthTableScroll,#mediaModelsList,#mediaTasksList) table,
+  :is(#remainingUsageTableIntl,#remainingUsageTableCn,#creditHistoryTable,#creditGrantsTable){border-collapse:separate;border-spacing:0}
+  body.win-capped :is(#recent,#gatewayModelsSection .next-table-scroll,#activityList,#disabledList .table-wrap,#codeartsAccounts .table-wrap,#growthTableScroll,#mediaModelsList,#mediaTasksList) thead th,
+  :is(#remainingUsageTableIntl,#remainingUsageTableCn,#creditHistoryTable,#creditGrantsTable) thead th{
+    position:sticky;top:0;z-index:10;background:var(--panel2)!important;
+    box-shadow:0 2px 0 var(--panel2)!important
+  }
+}
+
 /* 按钮与表单 */
 html[data-ui="next"] main button.sec,
 html[data-ui="next"] main .btn,
@@ -5949,7 +5998,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
               border-radius:14px;padding:26px 24px;box-shadow:0 10px 30px rgba(15,23,42,.12)">
     <div style="font-size:16px;font-weight:700;margin-bottom:6px">WorkBuddy</div>
     <div style="font-size:12px;color:var(--dim);margin-bottom:18px">请输入面板访问密码</div>
-    <input id="panelPwdInput" type="password" placeholder="面板密码" autocomplete="current-password"
+    <input id="panelPwdInput" type="password" placeholder="面板密码" autocomplete="current-password" disabled
            onkeydown="if(event.key==='Enter') submitPanelLogin()"
            style="width:100%;background:var(--panel2);border:1px solid var(--line);
                   border-radius:8px;padding:9px 12px;color:var(--fg);font:inherit">
@@ -5998,7 +6047,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       </button>
       <button type="button" class="next-nav-item" data-next-tab="tasks" onclick="nextGo('tasks')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg>
-        <span>自动化</span>
+        <span>自动化任务</span>
       </button>
       <button type="button" class="next-nav-item" data-next-tab="agents" onclick="nextGo('agents')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="7" width="14" height="11" rx="3"/><path d="M9 7V5.5A2.5 2.5 0 0 1 11.5 3h1A2.5 2.5 0 0 1 15 5.5V7M9 12h.01M15 12h.01M9.5 15.5h5"/></svg>
@@ -6072,7 +6121,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       </button>
       <button type="button" class="console-nav-link" id="btnNavModels" onclick="openModelCatalog()">模型管理</button>
       <button class="main-nav-btn" id="btnNavTasks" onclick="switchMainTab('tasks')">
-        自动化
+        自动化任务
       </button>
     </div>
     <div class="console-nav-group">
@@ -6316,7 +6365,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
   <!-- 版本模型库与能力清单 -->
   <section id="gatewayModelsSection">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-      <h2 style="margin:0">网关模型清单<em id="modelsRealmTag" style="color:var(--dim);font-weight:500"></em><em id="availModelCount"></em><span id="modelPickActions" class="page-nav-exclude" style="font-weight:400;margin-left:10px;white-space:nowrap"><button class="sec mini" onclick="applyModelPickAction('all')" title="把当前清单里的模型全部勾上（与「从未改过勾选」的默认态等价）">全选</button><button class="sec mini" onclick="applyModelPickAction('none')" title="取消全部勾选：DSH 等读取模型清单的客户端会被拦下，不会写出一份空清单">全不选</button><button class="sec mini" onclick="applyModelPickAction('invert')" title="按当前勾选状态取反：只想排除个别模型时比逐个点快">反选</button></span></h2>
+      <h2 style="margin:0">网关模型清单<em id="modelsRealmTag" style="color:var(--dim);font-weight:500"></em><em id="availModelCount"></em><span id="modelPickActions" class="page-nav-exclude" style="font-weight:400;margin-left:10px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap"><button class="sec mini" onclick="applyModelPickAction('all')">全选</button><button class="sec mini" onclick="applyModelPickAction('none')">全不选</button><button class="sec mini" onclick="applyModelPickAction('invert')">反选</button><button class="sec mini" id="btnSaveModelSelection" onclick="saveModelSelection()">保存勾选</button><span id="modelSelectionStatus" style="font-size:11px;font-weight:500;color:var(--warn)"></span></span></h2>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="font-size:12px;color:var(--dim)">展示当前视图下官方对话大模型、上下文容量、推理/视觉能力、思考控制、默认采样参数及在售倍率</div>
         <!-- 手动刷新：强制走一次上游 /v3/config（只在当前视图的版本上，用该
@@ -6334,7 +6383,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       <button type="button" class="sec mini" onclick="clearModelCatalogFilter()">清除筛选</button>
     </div>
     <div id="modelPickHint" style="font-size:12px;color:var(--dim);margin:0 0 10px;line-height:1.6"
-         title="勾选结果存在网关设置里，对所有版本视图生效；未勾选只影响一键配置写入客户端的模型清单，网关本身照常提供这些模型。">只有勾选的模型才会写入 DSH 等客户端（一键配置）；默认全部勾选，可用表头「全选 / 全不选 / 反选」批量调整，改完请重新一键配置并重启客户端。</div>
+         title="勾选结果存在网关设置里，对所有版本视图生效；未勾选只影响一键配置写入客户端的模型清单。">勾选后点击保存，再重新一键配置并重启客户端。未保存过的国际版清单会根据账号档位默认选择 Pro Only 模型。</div>
     <!-- 清单来源横幅：API 获取 → 绿色状态条（附刷新时间）；非 API（项目默认
          信息/缓存文件）→ 黄色警示「模型、倍率数据可能不一致」。内容由
          /v1/models 的 catalog 字段驱动，见 renderModelsSourceLine。 -->
@@ -6367,7 +6416,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
   <div id="accountsHeader" style="margin-bottom:16px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
     <div>
       <h2 style="margin:0;font-size:17px;color:var(--fg);font-family:var(--serif);font-weight:600;letter-spacing:.02em">账号</h2>
-      <div style="font-size:12px;color:var(--dim);margin-top:4px">管理账号池：添加/导入/导出、启用停用、凭证与积分刷新、代理出口绑定，以及签到与每日活跃记录。</div>
+      <div style="font-size:12px;color:var(--dim);margin-top:4px">管理账号池：添加/导入/导出、启用停用、凭证与积分刷新与代理出口绑定。</div>
     </div>
     <!-- 版本视图切换：账号列表、「当前禁用」与签到记录都按当前视图区域取，所以
          这一页自己得有个入口，不必为了换版本跑回网关页。它切的是视图
@@ -6380,7 +6429,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       <button type="button" id="accountsRealmCodearts" onclick="switchViewRealm('codearts')" aria-pressed="false" style="display:none">CodeArts</button>
     </div>
   </div>
-  <!-- 拆分模式下三个区块的落点（页头之后、原顺序）；合并模式搬走之后这里就空着 -->
+  <!-- 拆分模式下账号区块的落点（页头之后、原顺序）；合并模式搬走之后这里就空着 -->
   <span id="accountsHomeAnchor" hidden></span>
   <!-- CodeArts 视图：账号池由本进程直接管理。 -->
   <section id="codeartsAccountsSection" style="display:none">
@@ -6424,9 +6473,8 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       </select>
       <span class="console-filter-count" id="accountFilterCount">全部账号</span>
       <button type="button" class="sec mini" onclick="clearAccountFilters()">清除筛选</button>
-      <span style="font-size:11px;color:var(--dim)">选择错误码会自动勾选全部命中账号；选中分组后，刷新、测试、补积分和启停仍只作用于该分组</span>
     </div>
-    <div class="toolbar">
+    <div class="toolbar" id="accountToolbar">
     <button onclick="openLoginModal()">添加</button>
     <!-- 静态 API Key 是另一条并行入口：CodeBuddy 的登录页不支持企业微信扫码，
          企业号只能在 API 管理页手工建 Key 再粘进来。 -->
@@ -6462,8 +6510,8 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
             aria-controls="acctAdvancedTools" onclick="toggleAcctAdvanced(this)"
             title="展开 / 收起批量操作"><span class="tb-more-chev" aria-hidden="true"></span></button>
     </div>
-    <!-- 号池筛选放在折叠区之外：手机上也要能直接看到、直接切。 -->
-    <div class="tb-group tb-pool" id="poolToolsGroup">
+    <!-- 开启号池隔离后显示号池筛选和移动操作。 -->
+    <div class="tb-group tb-pool" id="poolToolsGroup" hidden>
     <select id="poolFilterSelect" class="mini-select pool-filter-select" onchange="poolFilter(this.value)" title="按号池筛选账号" aria-label="按号池筛选账号">
       <option value="all">全部号池</option>
       <option value="text">文本号池</option>
@@ -6506,51 +6554,13 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
     </div>
     <div id="disabledList"></div>
   </section>
-
-  <!-- 签到与活跃记录：读 wb_activity.py 落下的结构化历史（GET /activity/history），
-       一行一次真实尝试。筛选全部由服务端做（range/task/result/uid/limit），前端
-       只拼查询串与渲染，免得两处各写一份筛选规则再慢慢跑偏。 -->
-  <section id="workbuddyActivitySection">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-      <h2 style="margin:0">签到与活跃记录 <em id="activityCount"></em></h2>
-      <div style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <select id="activityRange" class="slot-select" onchange="loadActivityBoard()" aria-label="时间区间">
-          <option value="today">今日</option>
-          <option value="1d">近 1 天</option>
-          <option value="7d" selected>近 7 天</option>
-          <option value="30d">近 30 天</option>
-          <option value="90d">近 90 天</option>
-          <option value="all">全部</option>
-        </select>
-        <select id="activityTask" class="slot-select" onchange="loadActivityBoard()" aria-label="任务">
-          <option value="">全部任务</option>
-          <option value="checkin">国内版签到</option>
-          <option value="daily_chat">国际版每日活跃</option>
-        </select>
-        <select id="activityResult" class="slot-select" onchange="loadActivityBoard()" aria-label="结果">
-          <option value="">全部结果</option>
-          <option value="ok">成功</option>
-          <option value="failed">失败</option>
-        </select>
-        <select id="activityAccount" class="slot-select" onchange="loadActivityBoard()" aria-label="账号">
-          <option value="">全部账号</option>
-        </select>
-        <button class="sec mini" id="btnActivityRefresh" onclick="loadActivityBoard(true)">刷新</button>
-      </div>
-    </div>
-    <div id="activityList" class="table-wrap"></div>
-    <div id="activityMore" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--dim);align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <span id="activityMoreInfo"></span>
-      <button class="sec mini" id="btnActivityMore" onclick="loadActivityBoard(false, true)">加载更多</button>
-    </div>
-  </section>
   </div><!-- /pageAccounts -->
   
   <div id="pageTasks" class="main-page">
   <!-- 页面头部：标题 + 一行说明，与其它页面的头部结构保持一致 -->
   <div style="margin-bottom:16px">
     <h2 style="margin:0;font-size:17px;color:var(--fg);font-family:var(--serif);font-weight:600;letter-spacing:.02em">任务与福利</h2>
-    <div style="font-size:12px;color:var(--dim);margin-top:4px">每日活跃打卡、Buddy 加油站、成长任务与福利积分总览。</div>
+    <div style="font-size:12px;color:var(--dim);margin-top:4px">每日活跃打卡、Buddy 加油站、成长任务与签到活跃记录。</div>
   </div>
   <!-- 每日任务：国际版签到与国内版每日福利放在同一块，但每个动作仍有独立
        入口；一键执行每日任务只是把它们串起来，不改变单项语义。 -->
@@ -6561,23 +6571,11 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
         <div style="font-size:12px;color:var(--dim)">国际版每日签到与国内版每日福利；按天刷新，可单项执行，也可一键跑完。</div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:nowrap;align-items:center;flex:0 0 auto;justify-content:flex-end">
-        <!-- 账号选择器：原生 <select> 的弹层宽度跟输入框走，长标签会被直接截断，
-             这里换成自绘面板，四列对齐（账号 / 剩余积分 / 任务 / 今日签到）。 -->
-        <div class="acct-picker" id="cnCheckinAcctPicker">
-          <button type="button" class="acct-trigger" id="cnCheckinAcctTrigger" onclick="toggleGrowthPicker('daily', event)" aria-haspopup="listbox" aria-expanded="false">
-            <span class="acct-trigger-label" id="cnCheckinAcctCurrent">全部国内账号 (批量)</span>
-            <span class="acct-caret">▾</span>
-          </button>
-          <div class="acct-menu" id="cnCheckinAcctMenu" role="listbox" aria-label="选择国内版账号（每日福利）">
-            <div class="acct-menu-head"><span>账号</span><span>剩余积分</span><span>任务</span><span>今日签到</span></div>
-            <div id="cnCheckinAcctList"></div>
-          </div>
-        </div>
         <button class="primary" id="btnRunAllDailyTasks" onclick="runAllDailyTasks(this)">一键执行每日任务</button>
       </div>
     </div>
 
-    <div style="border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px;background:var(--panel2)">
+    <div style="border-top:1px solid var(--line);padding-top:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
         <div>
           <h3 style="margin:0;font-size:14px">国际版每日签到</h3>
@@ -6589,7 +6587,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
           <button class="primary" id="btnPageDailyChatPending" onclick="doDailyChatPending(this)">未活跃打卡一键打卡</button>
         </div>
       </div>
-      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;background:var(--panel)">
+      <div style="background:var(--panel2);border-radius:10px;padding:10px 12px;margin-bottom:12px">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;flex-wrap:wrap">
           <input id="taskDailyChatPreferFlash" type="checkbox" checked onchange="saveDailyChatPreferFlash(this)" style="width:16px;height:16px">
           <strong style="font-size:13px">优先 DeepSeek Flash，失败切免费模型</strong>
@@ -6609,27 +6607,39 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
           <div class="v" id="intlTotalGranted" style="color:var(--warn)">-</div>
         </div>
       </div>
-      <div id="intlDailyChatPanel" style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.8;background:var(--panel)">
+      <div id="intlDailyChatPanel" style="background:var(--panel2);border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.8">
         <div id="intlDailyChatSlots" style="color:var(--dim)">今日时段：-</div>
         <div id="intlDailyChatLive" style="color:var(--dim)"></div>
         <div id="intlDailyChatPending" style="margin-top:6px"></div>
       </div>
     </div>
 
-    <div style="border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--panel2)">
+    <div style="border-top:1px solid var(--line);padding-top:16px;margin-top:18px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
         <div>
           <h3 style="margin:0;font-size:14px">国内版每日福利</h3>
           <div style="font-size:12px;color:var(--dim);margin-top:3px">Buddy 加油站签到、猫猫旅行、连登管家与抽奖、夜猫子任务；各项每日额度互不占用。</div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end">
+          <!-- 账号选择器：原生 <select> 的弹层宽度跟输入框走，长标签会被直接截断，
+               这里换成自绘面板，四列对齐（账号 / 剩余积分 / 任务 / 今日签到）。 -->
+          <div class="acct-picker" id="cnCheckinAcctPicker">
+            <button type="button" class="acct-trigger" id="cnCheckinAcctTrigger" onclick="toggleGrowthPicker('daily', event)" aria-haspopup="listbox" aria-expanded="false">
+              <span class="acct-trigger-label" id="cnCheckinAcctCurrent">全部国内账号 (批量)</span>
+              <span class="acct-caret">▾</span>
+            </button>
+            <div class="acct-menu" id="cnCheckinAcctMenu" role="listbox" aria-label="选择国内版账号（每日福利）">
+              <div class="acct-menu-head"><span>账号</span><span>剩余积分</span><span>任务</span><span>今日签到</span></div>
+              <div id="cnCheckinAcctList"></div>
+            </div>
+          </div>
           <button class="primary" id="btnPageCheckin" onclick="triggerBuddyCheckin(this)">一键国内版签到</button>
           <button id="btnCatTravel" onclick="triggerCatTravel(this)">猫猫旅行</button>
           <button id="btnRunStreakBonus" onclick="triggerStreakBonus(this)">连登管家与抽奖</button>
           <button id="btnRunNightTask" onclick="triggerNightTask(this)">夜猫子任务</button>
         </div>
       </div>
-      <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(185px,1fr))">
+      <div class="cards" style="margin-bottom:0;grid-template-columns:repeat(auto-fit,minmax(185px,1fr))">
         <div class="card accent2" title="Buddy 加油站每日签到活动">
           <div class="k">Buddy 加油站签到</div>
           <div class="v" id="cnTodayCheckinState" style="font-size:17px;letter-spacing:-.2px">-</div>
@@ -6689,7 +6699,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       </div>
     </div>
 
-    <div style="overflow-x:auto">
+    <div id="growthTableScroll" style="overflow-x:auto">
       <table id="growthTable" class="data-cards">
         <thead>
           <tr>
@@ -6706,19 +6716,56 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
 
     <div id="taskLogBox" style="display:none;margin-top:14px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font-size:12px;font-family:ui-monospace,monospace;line-height:1.6;max-height:220px;overflow-y:auto"></div>
   </section>
+
+  <!-- 签到与活跃记录：读 wb_activity.py 落下的结构化历史（GET /activity/history），
+       一行一次真实尝试。筛选全部由服务端做（range/task/result/uid/limit），前端
+       只拼查询串与渲染，免得两处各写一份筛选规则再慢慢跑偏。 -->
+  <section id="workbuddyActivitySection">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <h2 style="margin:0">签到与活跃记录 <em id="activityCount"></em></h2>
+      <div style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <select id="activityRange" class="slot-select" onchange="loadActivityBoard()" aria-label="时间区间">
+          <option value="today">今日</option>
+          <option value="1d">近 1 天</option>
+          <option value="7d" selected>近 7 天</option>
+          <option value="30d">近 30 天</option>
+          <option value="90d">近 90 天</option>
+          <option value="all">全部</option>
+        </select>
+        <select id="activityTask" class="slot-select" onchange="loadActivityBoard()" aria-label="任务">
+          <option value="">全部任务</option>
+          <option value="checkin">国内版签到</option>
+          <option value="daily_chat">国际版每日活跃</option>
+        </select>
+        <select id="activityResult" class="slot-select" onchange="loadActivityBoard()" aria-label="结果">
+          <option value="">全部结果</option>
+          <option value="ok">成功</option>
+          <option value="failed">失败</option>
+        </select>
+        <select id="activityAccount" class="slot-select" onchange="loadActivityBoard()" aria-label="账号">
+          <option value="">全部账号</option>
+        </select>
+        <button class="sec mini" id="btnActivityRefresh" onclick="loadActivityBoard(true)">刷新</button>
+      </div>
+    </div>
+    <div id="activityList" class="table-wrap"></div>
+    <div id="activityMore" style="display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--dim);align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <span id="activityMoreInfo"></span>
+      <button class="sec mini" id="btnActivityMore" onclick="loadActivityBoard(false, true)">加载更多</button>
+    </div>
+  </section>
   </div><!-- /pageTasks -->
 
   
   <!-- 账号页（issue #176）：账号多起来之后，网关页的卡片与最近请求被一长串账号
-       挤到下面，所以账号列表与「当前禁用总览」单独成一个菜单，签到/活跃记录也
-       放在这里——它回答的正是「这个账号昨天到底签成了没有」。 -->
+       挤到下面，所以账号列表与「当前禁用总览」单独成一个菜单。 -->
   <div id="pageMedia" class="main-page">
     <div style="margin-bottom:16px">
       <h2 style="margin:0;font-size:17px;color:var(--fg);font-family:var(--serif);font-weight:600;letter-spacing:.02em">媒体生成</h2>
       <div style="font-size:12px;color:var(--dim);margin-top:4px">生图 / 生视频的限额在「设置」页；这里看模型约束和最近任务。每次生成都会真实扣账号积分。</div>
     </div>
 
-    <section>
+    <section id="mediaModelsSection">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
         <div>
           <h2 style="margin:0">可用媒体模型 <em id="mediaModelsState"></em></h2>
@@ -6729,7 +6776,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       <div id="mediaModelsList" class="table-wrap"></div>
     </section>
 
-    <section>
+    <section id="mediaTasksSection">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
         <div>
           <h2 style="margin:0">最近任务 <em id="mediaTasksState"></em></h2>
@@ -7131,7 +7178,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
         <div>
           <h2 style="margin:0">账号独立成一个页签 <em id="setAccountsSeparateState"></em></h2>
           <div style="font-size:12px;color:var(--dim);margin-top:4px">
-            关闭（默认）时，账号列表、「当前禁用」与「签到与活跃记录」留在「网关与账号」页，位置与拆分前一致；开启后它们搬到独立的「账号」页，顶部页签变成 网关 → 账号 → 数据看板 → 智能体配置 → 设置 → 运行日志，网关页只剩网关自己的东西——账号多起来（国际版十几个）之后翻起来更短。两侧的区块与行为完全一样，只是分在哪一页；关闭后 ?tab=accounts 的书签会退回「网关与账号」页。
+            关闭（默认）时，账号列表与「当前禁用」留在「网关与账号」页，位置与拆分前一致；开启后它们搬到独立的「账号」页，顶部页签变成 网关 → 账号 → 数据看板 → 智能体配置 → 设置 → 运行日志，网关页只剩网关自己的东西——账号多起来（国际版十几个）之后翻起来更短。两侧的区块与行为完全一样，只是分在哪一页；关闭后 ?tab=accounts 的书签会退回「网关与账号」页。
           </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
@@ -7644,7 +7691,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">
             <label style="font-size:13px;color:var(--dim)">面板密码
-              <input id="setIdentityVersionPassword" type="password" autocomplete="current-password" style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font:inherit;color:var(--fg)">
+              <input id="setIdentityVersionPassword" type="password" autocomplete="off" disabled style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font:inherit;color:var(--fg)">
             </label>
             <button onclick="saveIdentityVersions(this)">保存版本号</button>
             <span style="font-size:12px;color:var(--warn)">保存后立即生效；输入框留空表示恢复默认</span>
@@ -8590,7 +8637,7 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       </button>
       <button type="button" class="next-more-item" data-next-tab="tasks" onclick="nextGo('tasks')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg>
-        <span>自动化</span>
+        <span>自动化任务</span>
       </button>
       <button type="button" class="next-more-item" data-next-tab="agents" onclick="nextGo('agents')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="7" width="14" height="11" rx="3"/><path d="M9 7V5.5A2.5 2.5 0 0 1 11.5 3h1A2.5 2.5 0 0 1 15 5.5V7M9 12h.01M15 12h.01M9.5 15.5h5"/></svg>
@@ -9304,8 +9351,7 @@ function updateUI(){
   }
 
   // CodeArts 视图隐藏 WorkBuddy 专属区块，避免把两套账号/积分读混。
-  ["workbuddyAccountsSection", "workbuddyDisabledSection",
-   "workbuddyActivitySection"].forEach(function(id){
+  ["workbuddyAccountsSection", "workbuddyDisabledSection"].forEach(function(id){
     const el = document.getElementById(id);
     if(el) el.style.display = isCodeartsView ? "none" : "";
   });
@@ -9828,7 +9874,10 @@ async function refreshModelCatalog(btn){
 async function loadModels(){
   try{
     const r = await getJSON('/v1/models?realm=' + encodeURIComponent(window.VIEW_REALM));
-    MODELS_DATA = r.data || [];
+    const list = r.data || [];
+    window.MODELS_DATA = list;
+    if(typeof globalThis !== 'undefined') globalThis.MODELS_DATA = list;
+    mergeUnseenModelsForCurrentRealm();
     renderModelsSourceLine(r.catalog || null);
     renderAvailableModels();
   }catch(e){
@@ -9850,10 +9899,12 @@ let MODEL_SELECTION_CONFIGURED = false;
 // 上一次确认写进服务端的那份选择：失败回滚与「没变化就不重发」都靠它。
 // null = 还没保存过（与空集合语义不同）。
 let MODEL_SELECTION_SAVED = null;
-let MODEL_SELECTION_TIMER = null;
 let MODEL_SELECTION_SAVING = false;
-let MODEL_SELECTION_QUEUED = false;
 let MODEL_SELECTION_LOADING = false;
+let MODEL_SELECTION_DIRTY = false;
+let MODEL_SELECTION_REV = 0;
+let MODEL_SELECTION_MERGED_REALMS = new Set();
+let MODEL_SELECTION_SEEN_IDS = new Set();
 
 function modelSelectionKey(list){
   return (list || []).map(String).sort().join('\n');
@@ -9861,14 +9912,68 @@ function modelSelectionKey(list){
 function currentModelSelection(){
   return Array.from(AGENT_MODEL_SELECTION);
 }
+function catalogModelsData(){
+  if(typeof MODELS_DATA !== 'undefined' && Array.isArray(MODELS_DATA)) return MODELS_DATA;
+  return Array.isArray(window.MODELS_DATA) ? window.MODELS_DATA : [];
+}
+function accountIsPaid(a){
+  if(!a || a.enabled === false) return false;
+  if(a.tier && a.tier.paid !== undefined && a.tier.paid !== null) return a.tier.paid === true;
+  return !!(a.credits && a.credits.is_paid_user === true);
+}
 // 某个模型当前算不算被勾选。所有「读勾选」的地方都走这里，别直接看集合，
 // 否则「从未保存」的全选态会被读成「全都不要」。
+function defaultModelPicked(id, realm, models){
+  const r = realm || window.VIEW_REALM;
+  if(r !== 'intl') return true;
+  const model = (models || catalogModelsData()).find(m => m && m.id === id);
+  if(!model || !model.entitlement) return true;
+  return (window.ACCOUNTS || []).some(a => a.realm === 'intl' && accountIsPaid(a));
+}
 function isModelPicked(id){
-  return !MODEL_SELECTION_CONFIGURED || AGENT_MODEL_SELECTION.has(id);
+  return MODEL_SELECTION_CONFIGURED ? AGENT_MODEL_SELECTION.has(id) : defaultModelPicked(id);
+}
+function isSavedModelPicked(id){
+  return MODEL_SELECTION_SAVED ? MODEL_SELECTION_SAVED.has(id) : defaultModelPicked(id, agentRequestRealm(), AGENT_MODELS);
+}
+function updateModelSelectionStatus(){
+  const status = document.getElementById('modelSelectionStatus');
+  if(status) status.textContent = MODEL_SELECTION_DIRTY ? '未保存' : '';
+  const btn = document.getElementById('btnSaveModelSelection');
+  if(btn && btn.classList && btn.classList.toggle){
+    btn.classList.toggle('primary', MODEL_SELECTION_DIRTY);
+    btn.classList.toggle('sec', !MODEL_SELECTION_DIRTY);
+  }
+}
+function materializeModelSelection(){
+  if(MODEL_SELECTION_CONFIGURED) return;
+  const ids = allModelPickIds();
+  AGENT_MODEL_SELECTION = new Set(ids.filter(isModelPicked));
+  MODEL_SELECTION_CONFIGURED = true;
+  ids.forEach(id => MODEL_SELECTION_SEEN_IDS.add(id));
+  if(window.VIEW_REALM === 'intl' || window.VIEW_REALM === 'cn'){
+    MODEL_SELECTION_MERGED_REALMS.add(window.VIEW_REALM);
+  }
+}
+function mergeUnseenModelsForCurrentRealm(){
+  if(!MODEL_SELECTION_CONFIGURED || MODEL_SELECTION_SAVED) return;
+  const r = window.VIEW_REALM;
+  if(r !== 'intl' && r !== 'cn') return;
+  if(MODEL_SELECTION_MERGED_REALMS.has(r)) return;
+  allModelPickIds().forEach(id => {
+    if(!MODEL_SELECTION_SEEN_IDS.has(id)){
+      MODEL_SELECTION_SEEN_IDS.add(id);
+      if(defaultModelPicked(id, r, catalogModelsData())) AGENT_MODEL_SELECTION.add(id);
+    }
+  });
+  MODEL_SELECTION_MERGED_REALMS.add(r);
 }
 // 批量动作始终针对当前目录全量 id，不受纯展示筛选隐藏的行影响。
 function allModelPickIds(){
-  return (MODELS_DATA || []).map(m => String((m && m.id) || '')).filter(Boolean);
+  const list = (typeof MODELS_DATA !== 'undefined' && Array.isArray(MODELS_DATA))
+    ? MODELS_DATA
+    : catalogModelsData();
+  return list.map(m => String((m && m.id) || '')).filter(Boolean);
 }
 let MODEL_CATALOG_FILTER = '';
 function clearModelCatalogFilter(){
@@ -9883,8 +9988,8 @@ function clearModelCatalogFilter(){
 function updateAvailModelCount(){
   const em = document.getElementById('availModelCount');
   if(!em) return;
-  const total = MODELS_DATA.length;
-  const picked = MODEL_SELECTION_CONFIGURED ? AGENT_MODEL_SELECTION.size : total;
+  const total = catalogModelsData().length;
+  const picked = allModelPickIds().filter(isModelPicked).length;
   em.textContent = '(共 ' + total + ' 个) · 已选 ' + picked;
 }
 
@@ -9898,16 +10003,21 @@ function syncModelPickBoxes(){
 }
 
 async function loadAgentModelSelection(){
-  if(MODEL_SELECTION_LOADING) return;
+  if(MODEL_SELECTION_LOADING || MODEL_SELECTION_DIRTY || MODEL_SELECTION_SAVING) return;
   MODEL_SELECTION_LOADING = true;
+  const startRev = MODEL_SELECTION_REV;
   try{
     const r = await getJSON('/agents/model-selection');
+    if(MODEL_SELECTION_DIRTY || MODEL_SELECTION_REV !== startRev || MODEL_SELECTION_SAVING) return;
     const list = (r && (r.selected_models || r.models)) || [];
     // configured=false 表示服务端还没存过：这时维持「全部勾选」的默认态，
     // 空集合在这里读作「全都要」。存过之后才按存的那份画。
     MODEL_SELECTION_CONFIGURED = !!(r && r.configured);
     AGENT_MODEL_SELECTION = new Set(MODEL_SELECTION_CONFIGURED ? list.map(String) : []);
     MODEL_SELECTION_SAVED = MODEL_SELECTION_CONFIGURED ? new Set(AGENT_MODEL_SELECTION) : null;
+    MODEL_SELECTION_MERGED_REALMS = new Set();
+    MODEL_SELECTION_SEEN_IDS = new Set();
+    updateModelSelectionStatus();
     syncModelPickBoxes();
   }catch(e){
     // 读不到就维持「全部勾选」的默认态（等价于升级前的行为：整份目录都写进客户端），
@@ -9918,58 +10028,76 @@ async function loadAgentModelSelection(){
   }
 }
 
-// 勾选落库：本地立即生效，POST 防抖 400ms——连点几行只发一次整份列表。
-// 选择没变化（比如勾上又取消）时不发请求。
-function scheduleModelSelectionSave(){
-  if(MODEL_SELECTION_TIMER) clearTimeout(MODEL_SELECTION_TIMER);
-  MODEL_SELECTION_TIMER = setTimeout(saveModelSelection, 400);
-}
-
+// 显式保存勾选：点击「保存勾选」后把当前选中的模型清单写入服务端；首次从未保存状态
+// 落盘时，顺带把另一出口的默认勾选（不含未解锁的国际版 Pro Only 模型）一起合并进去。
 async function saveModelSelection(){
-  MODEL_SELECTION_TIMER = null;
-  if(MODEL_SELECTION_SAVING){ MODEL_SELECTION_QUEUED = true; return; }
-  const payload = currentModelSelection();
-  const key = modelSelectionKey(payload);
-  // 还没存过时（SAVED=null）不能拿空集合当"上次保存的结果"比，否则用户从全选态
-  // 里取消一个模型，会被误判成"没变化"而永远发不出去。
-  if(MODEL_SELECTION_SAVED && key === modelSelectionKey(Array.from(MODEL_SELECTION_SAVED))) return;
+  if(MODEL_SELECTION_SAVING) return;
   MODEL_SELECTION_SAVING = true;
+  const btn = document.getElementById('btnSaveModelSelection');
+  if(btn){ btn.disabled = true; btn.textContent = '保存中...'; }
+  const startRev = MODEL_SELECTION_REV;
   try{
-    const r = await postJSON('/agents/model-selection', {models: payload});
-    MODEL_SELECTION_SAVED = new Set(payload);
-    MODEL_SELECTION_CONFIGURED = true;
-    // 服务端会清洗列表（去重 / 超长截断）。保存期间没人继续勾选时以返回值为准，
-    // 让面板上的勾选与真正落盘的清单一致；有人在期间改过就保留本地状态，等
-    // 下面 finally 里的补发把最新一份送上去。
-    const saved = r && (r.selected_models || r.models);
-    if(Array.isArray(saved) && modelSelectionKey(currentModelSelection()) === key){
-      const normalized = new Set(saved.map(String));
-      if(modelSelectionKey(Array.from(normalized)) !== key){
-        AGENT_MODEL_SELECTION = normalized;
-        MODEL_SELECTION_SAVED = new Set(normalized);
-        syncModelPickBoxes();
-        if(AGENT_MODELS.length) renderAgentConnForm();
+    const ids = allModelPickIds();
+    const draft = MODEL_SELECTION_CONFIGURED
+      ? new Set(AGENT_MODEL_SELECTION)
+      : new Set(ids.filter(isModelPicked));
+    const seen = new Set(MODEL_SELECTION_SEEN_IDS);
+    const merged = new Set(MODEL_SELECTION_MERGED_REALMS);
+    ids.forEach(id => seen.add(id));
+    if(window.VIEW_REALM === 'intl' || window.VIEW_REALM === 'cn'){
+      merged.add(window.VIEW_REALM);
+    }
+    if(!MODEL_SELECTION_SAVED){
+      for(const realm of ['intl', 'cn']){
+        if(merged.has(realm)) continue;
+        let catalog;
+        try{
+          catalog = await getJSON('/v1/models?realm=' + realm);
+        }catch(e){
+          if(!isAuthError(e)) toast('读取另一出口模型失败，未保存：' + e.message, 'bad');
+          return;
+        }
+        (catalog && catalog.data ? catalog.data : []).forEach(model => {
+          if(model && model.id && !seen.has(model.id)){
+            seen.add(model.id);
+            if(defaultModelPicked(model.id, realm, catalog.data)) draft.add(model.id);
+          }
+        });
+        merged.add(realm);
       }
     }
+    const payload = Array.from(draft);
+    const key = modelSelectionKey(payload);
+    // 还没存过时（SAVED=null）不能拿空集合当"上次保存的结果"比，否则用户从全选态
+    // 里取消一个模型，会被误判成"没变化"而永远发不出去。
+    if(MODEL_SELECTION_SAVED && key === modelSelectionKey(Array.from(MODEL_SELECTION_SAVED))){
+      if(MODEL_SELECTION_REV === startRev) MODEL_SELECTION_DIRTY = false;
+      updateModelSelectionStatus();
+      toast('模型勾选已是最新', 'ok');
+      return;
+    }
+    const r = await postJSON('/agents/model-selection', {models: payload});
+    const saved = r && (r.selected_models || r.models);
+    const committed = Array.isArray(saved) ? saved.map(String) : payload;
+    MODEL_SELECTION_SAVED = new Set(committed);
+    MODEL_SELECTION_CONFIGURED = true;
+    MODEL_SELECTION_MERGED_REALMS = merged;
+    MODEL_SELECTION_SEEN_IDS = seen;
+    if(MODEL_SELECTION_REV === startRev){
+      AGENT_MODEL_SELECTION = new Set(committed);
+      MODEL_SELECTION_DIRTY = false;
+      syncModelPickBoxes();
+    } else {
+      MODEL_SELECTION_DIRTY = modelSelectionKey(currentModelSelection()) !== modelSelectionKey(committed);
+    }
+    updateModelSelectionStatus();
+    if(typeof AGENT_MODELS !== 'undefined' && AGENT_MODELS.length && typeof renderAgentConnForm === 'function') renderAgentConnForm();
+    toast('模型勾选已保存', 'ok');
   }catch(e){
-    // 面板上的勾选必须和服务器保持一致：回滚到上次成功的快照并重画。智能体页
-    // 的默认模型下拉是按勾选集合画的，回滚后也要跟着重画，否则它会继续列一个
-    // 已经被取消勾选的模型。
-    AGENT_MODEL_SELECTION = MODEL_SELECTION_SAVED ? new Set(MODEL_SELECTION_SAVED) : new Set();
-    MODEL_SELECTION_CONFIGURED = !!MODEL_SELECTION_SAVED;
-    syncModelPickBoxes();
-    if(AGENT_MODELS.length) renderAgentConnForm();
     if(!isAuthError(e)) toast('模型勾选保存失败：' + e.message, 'bad');
   }finally{
     MODEL_SELECTION_SAVING = false;
-    // 保存期间又有勾选：串行补发一次，别让旧响应把新的选择盖掉。
-    if(MODEL_SELECTION_QUEUED){
-      MODEL_SELECTION_QUEUED = false;
-      scheduleModelSelectionSave();
-    } else if(modelSelectionKey(currentModelSelection())
-              !== modelSelectionKey(MODEL_SELECTION_SAVED ? Array.from(MODEL_SELECTION_SAVED) : [])){
-      scheduleModelSelectionSave();
-    }
+    if(btn){ btn.disabled = false; btn.textContent = '保存勾选'; }
   }
 }
 
@@ -9980,19 +10108,14 @@ document.addEventListener('change', function(ev){
   if(!box || !box.classList || !box.classList.contains('model-pick')) return;
   const id = box.dataset ? box.dataset.modelId : '';
   if(!id) return;
-  if(!MODEL_SELECTION_CONFIGURED){
-    // 从「从未保存」的全选态改起：先把整份清单落成显式集合，再应用这一次改动。
-    // 少了这一步，「取消一个模型」会被存成「只选这一个」的反面。
-    AGENT_MODEL_SELECTION = new Set(allModelPickIds());
-    MODEL_SELECTION_CONFIGURED = true;
-  }
+  materializeModelSelection();
   if(box.checked) AGENT_MODEL_SELECTION.add(id);
   else AGENT_MODEL_SELECTION.delete(id);
+  MODEL_SELECTION_REV++;
   updateAvailModelCount();
-  scheduleModelSelectionSave();
-  // 智能体页的默认模型下拉只列已勾选的模型，选择变了就跟着重画；目录还没
-  // 加载（没打开过智能体页）时由 loadAgents() 自己按当前选择画。
-  if(AGENT_MODELS.length) renderAgentConnForm();
+  MODEL_SELECTION_DIRTY = !MODEL_SELECTION_SAVED
+    || modelSelectionKey(currentModelSelection()) !== modelSelectionKey(Array.from(MODEL_SELECTION_SAVED));
+  updateModelSelectionStatus();
 });
 
 // 「对外名称」列同样走事件委托：表格每次重画都换掉整批 input。
@@ -10010,14 +10133,19 @@ document.addEventListener('change', function(ev){
 // 「实际保存的清单」分家——两者都是最难查的那类双状态 bug。
 function applyModelPickAction(kind){
   const all = allModelPickIds();
-  if(kind === 'all') AGENT_MODEL_SELECTION = new Set(all);
-  else if(kind === 'none') AGENT_MODEL_SELECTION = new Set();
-  else if(kind === 'invert') AGENT_MODEL_SELECTION = new Set(all.filter(id => !isModelPicked(id)));
-  else return;
-  MODEL_SELECTION_CONFIGURED = true;
+  if(!['all', 'none', 'invert'].includes(kind)) return;
+  materializeModelSelection();
+  const next = new Set(AGENT_MODEL_SELECTION);
+  all.forEach(id => {
+    const picked = kind === 'all' || (kind === 'invert' && !isModelPicked(id));
+    if(picked) next.add(id); else next.delete(id);
+  });
+  AGENT_MODEL_SELECTION = next;
+  MODEL_SELECTION_REV++;
   syncModelPickBoxes();
-  scheduleModelSelectionSave();
-  if(AGENT_MODELS.length) renderAgentConnForm();
+  MODEL_SELECTION_DIRTY = !MODEL_SELECTION_SAVED
+    || modelSelectionKey(currentModelSelection()) !== modelSelectionKey(Array.from(MODEL_SELECTION_SAVED));
+  updateModelSelectionStatus();
 }
 
 // 清单来源横幅：把「通过 API 获取的最新数据」和「项目默认/缓存文件数据」在
@@ -10172,15 +10300,16 @@ function renderAvailableModels(){
   if(aliasTh) aliasTh.style.display = aliasOn ? '' : 'none';
   updateAvailModelCount();
   const query = MODEL_CATALOG_FILTER.trim().toLowerCase();
-  const visibleModels = MODELS_DATA.filter(m => !query || [
+  const modelsList = catalogModelsData();
+  const visibleModels = modelsList.filter(m => !query || [
     m.id, m.name, m.description, m.credits,
     m.supports_vision ? '视觉 vision' : '文本 text',
     m.supports_tool_calls ? '工具 tools' : '',
     m.supports_reasoning ? '推理 reasoning' : ''
   ].some(v => String(v || '').toLowerCase().includes(query)));
   const count = document.getElementById('modelCatalogFilterCount');
-  if(count) count.textContent = query ? ('显示 ' + visibleModels.length + ' / ' + MODELS_DATA.length + ' 个模型') : '';
-  if(!MODELS_DATA.length){
+  if(count) count.textContent = query ? ('显示 ' + visibleModels.length + ' / ' + modelsList.length + ' 个模型') : '';
+  if(!modelsList.length){
     tb.innerHTML = '<tr><td colspan="' + (aliasOn ? 9 : 8) + '" class="empty">暂无可用模型</td></tr>';
     return;
   }
@@ -10993,6 +11122,15 @@ async function triggerCatTravel(btn, uidOverride){
   }
 }
 
+/* 切在自动化页执行完单次签到/打卡后，顺手刷新下方签到与活跃记录（若未展开加载更多）。 */
+function refreshActivityBoardOnTasks(){
+  if(typeof currentMainTab !== 'undefined' && currentMainTab === 'tasks'
+     && typeof ACTIVITY_LIMIT !== 'undefined' && typeof ACTIVITY_PAGE !== 'undefined'
+     && ACTIVITY_LIMIT === ACTIVITY_PAGE && typeof loadActivityBoard === 'function'){
+    loadActivityBoard();
+  }
+}
+
 /* 签到回执的展示文案。后端 state：checked = 本次真签成；already = 今天早就签过
  * 了，上游原话是「今天已签到，请明天再来」——这时候一个积分都没加，绝不能再说
  * 「签到成功 (+100积分)」，否则重复点击看起来像是"还能再签一次"。
@@ -11036,6 +11174,7 @@ async function triggerBuddyCheckin(btn, uidOverride){
             fresh ? "ok" : (ok ? "info" : "warn"));
     }
     await loadAccounts(); await loadGrowthTasks();
+    refreshActivityBoardOnTasks();
     return ok;
   }catch(e){
     toast("签到失败: " + e.message, "bad");
@@ -11190,6 +11329,7 @@ async function doDailyChat(btn){
       toast("每日活跃: " + summary, ok ? "ok" : "warn");
     }
     await refreshActiveRealm(); window.updateUI(); loadAccounts(); loadModels();
+    refreshActivityBoardOnTasks();
     return ok;
   }catch(e){ toast("打卡失败: " + e.message, "bad"); return false; }
   finally { btn.disabled = false; btn.textContent = ot; }
@@ -11232,6 +11372,7 @@ async function doDailyChatPending(btn){
       toast("未活跃打卡: " + summary, ok ? "ok" : "warn");
     }
     await refreshActiveRealm(); window.updateUI(); loadAccounts(); loadModels();
+    refreshActivityBoardOnTasks();
     return ok;
   }catch(e){ toast("未活跃打卡失败: " + e.message, "bad"); return false; }
   finally { if(btn){ btn.disabled = false; btn.textContent = ot; } }
@@ -11251,6 +11392,7 @@ async function doDailyChatWeb(btn){
       toast("网页通道打卡: " + summary, res.some(x => x.ok) ? "ok" : "warn");
     }
     await refreshActiveRealm(); window.updateUI(); loadAccounts(); loadModels();
+    refreshActivityBoardOnTasks();
   }catch(e){ toast("网页通道打卡失败: " + e.message, "bad"); }
   finally { btn.disabled = false; btn.textContent = ot; }
 }
@@ -13558,6 +13700,8 @@ async function loadAccounts(poll, opts){
     ]);
     if(!(opts && opts.deferActivity)) await activityPromise;
     window.ACCOUNTS = acct.accounts || [];
+    if(!MODEL_SELECTION_CONFIGURED && !MODEL_SELECTION_DIRTY) syncModelPickBoxes();
+    if(!MODEL_SELECTION_SAVED && typeof AGENT_MODELS !== 'undefined' && AGENT_MODELS.length && typeof renderAgentConnForm === 'function') renderAgentConnForm();
     USAGE_BY_ACCOUNT = {};
     (byAcct.accounts || []).forEach(a => { USAGE_BY_ACCOUNT[a.account] = a; });
     await loadProxySlots();
@@ -13619,11 +13763,10 @@ function poolFilter(scope){
   ACCT_PAGE = 1;
   renderAccounts();
 }
-function applyPoolSeparationUi(){
-  // 号池筛选与「移入媒体池 / 移入文本池」始终可用：poolScope 是账号的归属
-  // 标记，隔离关着时它不限制派发，但仍然是可查、可改的。隔离开关只影响派发
-  // 行为（由服务端判定），不决定这些控件是否上屏——这里只把下拉的显示值与
-  // 当前筛选同步一次。
+function applyPoolSeparationUi(enabled){
+  const group = document.getElementById('poolToolsGroup');
+  if(group) group.hidden = !enabled;
+  if(!enabled && POOL_FILTER !== 'all') poolFilter('all');
   const sel = document.getElementById('poolFilterSelect');
   if(sel) sel.value = POOL_FILTER;
   updateBatchPoolBar();
@@ -15991,7 +16134,10 @@ function panelNeedsLogin(){
   if(gate) gate.style.display = 'flex';
   panelSyncRemember();
   const input = document.getElementById('panelPwdInput');
-  if(input){ input.focus(); }
+  if(input){
+    input.disabled = false;
+    input.focus();
+  }
 }
 
 function panelSessionLost(){
@@ -16025,6 +16171,11 @@ function panelHideGate(){
   document.documentElement.classList.remove('wb-panel-session');
   const gate = document.getElementById('panelGate');
   if(gate) gate.style.display = 'none';
+  const input = document.getElementById('panelPwdInput');
+  if(input){
+    input.disabled = true;
+    input.value = '';
+  }
 }
 
 async function submitPanelLogin(){
@@ -16620,11 +16771,11 @@ function navPageRows(){
    i18n 观察者翻译，切语言时也跟着 restore/walk 走，不用在这里额外重建一次。
    没被 walk 过的节点（界面一直是中文）没有 __wbSrc，textContent 本身就是原文。 */
 function navPageLabel(row){
-  // 新壳的导航文案与旧顶栏不同（任务与福利 → 自动化，数据看板 → 用量…），
+  // 新壳的导航文案与旧顶栏不同（任务与福利 → 自动化任务，数据看板 → 用量…），
   // 设置里的「顶部页签显示」要跟着新壳走，不能把旧标签又露出来。
   if(window.__NEXT_UI__){
     const nextLabels = {
-      gateway: '网关', accounts: '账号', tasks: '自动化', analytics: '用量',
+      gateway: '网关', accounts: '账号', tasks: '自动化任务', analytics: '用量',
       agents: '智能体', api: '接口', settings: '设置', logs: '日志'
     };
     if(nextLabels[row.key]) return nextLabels[row.key];
@@ -17119,7 +17270,7 @@ function toggleConsoleLayout(evt){
 // ==== 全局控制台导航开始 ====
 const CONSOLE_COLLAPSE_KEY = 'wb-console-nav-collapsed';
 const CONSOLE_PAGE_LABELS = {
-  gateway: '运行概览', accounts: '账号', tasks: '自动化',
+  gateway: '运行概览', accounts: '账号', tasks: '自动化任务',
   media: '媒体', analytics: '用量', logs: '日志', settings: '设置', agents: '智能体', api: '接口'
 };
 function consoleNavIsMobile(){
@@ -17728,7 +17879,7 @@ async function loadSettings(showToast, opts){
           poolSeparationState.style.color = poolSeparation ? 'var(--accent2)' : 'var(--dim)';
         }
       }
-      applyPoolSeparationUi();
+      applyPoolSeparationUi(poolSeparationEffective || poolSeparation);
       const holdSec = typeof data.restriction_hold_seconds === 'number' ? data.restriction_hold_seconds : 1800;
       const holdInput = document.getElementById('setRestrictionHoldSeconds');
       if(holdInput) holdInput.value = holdSec;
@@ -18471,10 +18622,12 @@ function renderIdentityVersions(){
   if(summary){
     summary.innerHTML = IDENTITY_VERSION_FIELDS.map(function(item){
       const key = item[0], label = item[1];
-      const fallback = IDENTITY_VERSION_DEFAULTS[key] || '-';
-      const current = IDENTITY_VERSION_CURRENT[key] || fallback;
-      const changed = IDENTITY_VERSION_CURRENT[key]
-        && IDENTITY_VERSION_CURRENT[key] !== IDENTITY_VERSION_DEFAULTS[key];
+      const defaultValue = IDENTITY_VERSION_DEFAULTS[key] || '-';
+      const cnDefault = key === 'desktop_cli' && IDENTITY_VERSION_DEFAULTS.desktop_cli_cn;
+      const fallback = cnDefault ? 'CN ' + cnDefault + ' / INTL ' + defaultValue : defaultValue;
+      const override = IDENTITY_VERSION_CURRENT[key];
+      const current = override || fallback;
+      const changed = override && (override !== defaultValue || (cnDefault && override !== cnDefault));
       return '<div>' + esc(label) + '：<span class="mono" style="color:var(--fg)">'
         + esc(current) + '</span> '
         + (changed
@@ -18488,9 +18641,16 @@ function renderIdentityVersions(){
     if(el) el.value = IDENTITY_VERSION_CURRENT[item[0]] || '';
   });
 }
-function toggleIdentityVersionEditor(){
+function toggleIdentityVersionEditor(open){
   const el = document.getElementById('identityVersionEditor');
-  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if(!el) return;
+  const show = open === undefined ? el.style.display === 'none' : open;
+  el.style.display = show ? 'block' : 'none';
+  const password = document.getElementById('setIdentityVersionPassword');
+  if(password){
+    password.disabled = !show;
+    if(!show) password.value = '';
+  }
 }
 async function saveIdentityVersions(btn){
   const passwordEl = document.getElementById('setIdentityVersionPassword');
@@ -18506,9 +18666,7 @@ async function saveIdentityVersions(btn){
   try {
     await postJSON('/settings/save', {identity_versions: versions, panel_password: password});
     toast('出站身份版本号已保存', 'ok');
-    if(passwordEl) passwordEl.value = '';
-    const editor = document.getElementById('identityVersionEditor');
-    if(editor) editor.style.display = 'none';
+    toggleIdentityVersionEditor(false);
     loadSettings();
   } catch(e) {
     toast('保存失败: ' + e.message, 'bad');
@@ -19135,7 +19293,7 @@ async function savePoolSeparation(btn){
     toast(value ? '已启用：按号池标签限制派发'
                 : '已关闭：所有账号都可服务文本与媒体', 'ok');
     if(typeof loadSettings === 'function') await loadSettings();
-    else applyPoolSeparationUi();
+    else applyPoolSeparationUi(value);
   } catch(e) {
     toast('保存失败: ' + e.message, 'bad');
   } finally {
@@ -21103,6 +21261,7 @@ function switchMainTab(tab){
   if(!window.__NEXT_UI__ && tab === 'overview') tab = 'gateway';
   const prevTab = currentMainTab;
   currentMainTab = tab;
+  if(prevTab === 'settings' && tab !== 'settings') toggleIdentityVersionEditor(false);
   syncConsoleContext(tab);
   // 从不轮询账号的页签切过来：立刻拉一次，不等下一轮 15 秒。
   if(PANEL_READY && accountsTabActive(tab) && !accountsTabActive(prevTab)) loadAccounts(true);
@@ -21163,9 +21322,7 @@ function switchMainTab(tab){
     if(on) initPageNav(page);
   });
   if(!window.__NEXT_UI__ && tab === 'gateway') applyConsoleView('overview');
-  if(tab === 'tasks'){ loadGrowthTasks(); }
-  if(tab === 'accounts' || (!_accountsSeparateTab && tab === 'gateway')){ loadActivityBoard(); }
-  if(window.__NEXT_UI__ && !_accountsSeparateTab && tab === 'overview'){ loadActivityBoard(); }
+  if(tab === 'tasks'){ loadGrowthTasks(); loadActivityBoard(); }
   if(tab === 'analytics'){ loadAnalytics(); loadAnalyticsMatrix(); }
   if(tab === 'settings'){ loadSettings(); loadProxySlots(); }
   if(tab === 'agents'){ loadAgents(); }
@@ -21541,7 +21698,7 @@ function renderAgentConnForm(){
       if(!id) return;
       // 只列「网关模型清单」里勾选的模型：一键配置只写这份清单，下拉里出现
       // 没勾选的模型会让用户以为它也会被写进去。
-      if(!isModelPicked(id)) return;
+      if(!isSavedModelPicked(id)) return;
       const cw = (typeof m === 'object' && m) ? (m.context_window || m.contextWindow || 0) : 0;
       const label = id + (cw ? ' (' + fmt(cw) + ' ctx)' : '');
       html += '<option value="' + esc(id) + '">' + esc(label) + '</option>';
@@ -21666,7 +21823,7 @@ async function applyAgent(id, btn){
   // 这类客户端收到空列表会返回 400，这里给一句更明确的下一步提示。
   const pickedModels = (AGENT_MODELS || [])
     .map(m => String((typeof m === 'object' ? (m.id || m.model || '') : m) || ''))
-    .filter(id => id && isModelPicked(id));
+    .filter(id => id && isSavedModelPicked(id));
   // 只有把模型清单写进自身配置的客户端（DSH / OpenCode / Crush / ZCode，
   // 后端 /agents 的 model_embedding_clients 声明）才需要「至少勾一个」；
   // Claude Code / Codex 不读这份清单，别因为没勾模型就把它们的一键配置也挡掉。
@@ -25114,10 +25271,10 @@ if (typeof SORT_DENY_TABLES !== 'undefined' && SORT_DENY_TABLES && SORT_DENY_TAB
   var NEXT_META = {
     overview: { title: '总览', desc: '出口、账号健康和最近请求一屏看完。' },
     gateway: { title: '网关', desc: '模型目录、能力、思考档位与在售倍率。' },
-    accounts: { title: '账号', desc: 'WorkBuddy 与 CodeArts 账号、积分和签到记录。' },
+    accounts: { title: '账号', desc: 'WorkBuddy 与 CodeArts 账号、积分与出口绑定。' },
     api: { title: '接口', desc: '管理外部 API Key、调用记录和账号接口文档。' },
     analytics: { title: '用量', desc: 'Token、请求、缓存、成本和剩余额度。' },
-    tasks: { title: '自动化', desc: '后台调度器、一次性 / 活动福利和每日任务。' },
+    tasks: { title: '自动化任务', desc: '后台调度器、每日任务、一次性福利与签到活跃记录。' },
     agents: { title: '智能体', desc: '把本机 AI 客户端一键指向当前网关。' },
     media: { title: '媒体', desc: '图片与视频生成任务、额度、价格和账号分配。' },
     settings: { title: '设置', desc: 'API Key、出口、模型、调度和系统选项。' },

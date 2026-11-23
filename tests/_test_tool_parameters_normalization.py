@@ -376,5 +376,24 @@ check("default 3 untouched", fn["parameters"]["properties"]["days"]["default"] =
 check("required untouched", fn["parameters"]["required"] == ["city"], fn)
 
 print()
+print("[19] Unicode regex escapes are translated only inside schema patterns")
+literal = r"\u00E9"
+fn = {"name": "t19", "parameters": {"type": "object", "properties": {
+    "path": {"type": "string", "pattern": r"^[^\uD800-\uDFFF]*$", "default": literal},
+    "escaped": {"type": "string", "pattern": r"\\u0041\u0042"},
+    "quoted": {"type": "string", "pattern": r"\Q\u0041\E\u0042"},
+    "surrogate": {"type": "string", "pattern": "^[^\ud800-\udfff]*$"},
+    "astral": {"type": "string", "pattern": r"^\uD83D\uDE00$"},
+}}}
+P._normalize_tool_parameters(fn)
+props = fn["parameters"]["properties"]
+check("Unicode exclusion guard is preserved", props["path"]["pattern"] == r"^[^\x{D800}-\x{DFFF}]*$")
+check("literal pattern data is preserved", props["path"]["default"] == literal)
+check("escaped slash is preserved", props["escaped"]["pattern"] == r"\\u0041\x{0042}")
+check("quoted regex text is preserved", props["quoted"]["pattern"] == r"\Q\u0041\E\x{0042}")
+check("decoded surrogate is safe to encode", props["surrogate"]["pattern"] == props["path"]["pattern"])
+check("surrogate pair becomes one Unicode code point", props["astral"]["pattern"] == r"^\x{1F600}$")
+
+print()
 print("SUMMARY: PASS=%d FAIL=%d" % (PASS, FAIL))
 sys.exit(1 if FAIL else 0)

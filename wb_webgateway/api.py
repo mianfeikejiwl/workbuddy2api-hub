@@ -135,7 +135,13 @@ def handle(path, body, ctx, registry, cfg):
 
     ok = bool(result.get("providers"))
     if not ok:
-        message = "; ".join(err.get("message") or "" for err in result.get("errors") or [])
+        errors = result.get("errors") or []
+        for error in errors:
+            code = error.get("code")
+            if code in ("target_policy_denied", "target_unreachable"):
+                return _error(403 if code == "target_policy_denied" else 502,
+                              code, error["message"])
+        message = "; ".join(err.get("message") or "" for err in errors)
         return _error(502, "all_providers_failed",
                       message or "no web provider could serve this request")
     return 200, result

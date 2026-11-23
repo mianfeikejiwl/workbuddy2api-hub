@@ -13,10 +13,14 @@ Everything is offline: providers are replaced with fakes, the account pool is
 a stub. No network access required.
 """
 
+import io
 import json
 import os
 import sys
 import tempfile
+import urllib.error
+from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -307,6 +311,66 @@ check("multi mode does not pre-search", "results" not in multi_meta, multi_meta)
 check("max_uses is clamped", anth.prepare_multi(
     {"model": "m", "messages": [], "tools": [{"type": "web_search_20250305",
                                               "max_uses": 99}]})[1]["max_uses"] == 10)
+
+print()
+print("[9] WorkBuddy website-specific refusals do not penalize the pool")
+account = SimpleNamespace(uid="u1", domain="example.test")
+pool = SimpleNamespace(pick=mock.Mock(return_value=account))
+target_registry = gw.Registry(pool=pool, accounts_dir=None)
+target_registry.register(provider)
+target_cfg = make_cfg(provider, kind="fetch")
+for upstream_code, status_wanted, code_wanted in (
+    (15021, 403, "target_policy_denied"),
+    (15022, 502, "target_unreachable"),
+):
+    for http_error in (False, True):
+        encoded = json.dumps({"error": {"code": upstream_code}}).encode("utf-8")
+        opener = mock.Mock()
+        if http_error:
+            opener.open.side_effect = urllib.error.HTTPError(
+                "https://example.test/agenttool/v1/webfetch", 502, "bad gateway", {},
+                io.BytesIO(encoded))
+        else:
+            opener.open.return_value = io.BytesIO(encoded)
+        pool.pick.reset_mock()
+        with mock.patch.object(target_registry, "guard_url", return_value=("https://public.test", None)), \
+                mock.patch.object(wbp, "_opener_for_proxy", return_value=opener):
+            status, body = api.handle("/v1/tools/fetch", {"url": "https://public.test"},
+                                      {}, target_registry, target_cfg)
+        check("target error %d via HTTP error=%s is classified" % (upstream_code, http_error),
+              status == status_wanted and body["error"]["code"] == code_wanted
+              and pool.pick.call_count == 1 and opener.open.call_count == 1, (status, body))
+check("target failures do not cool the provider", not target_registry.cooling("workbuddy"))
+
+print()
+print("[10] public web tool results are recorded without request content")
+from _isolated_dirs import isolated_data_dirs
+_TEST_DATA = isolated_data_dirs("wb-webgateway-usage-")
+import wb_proxy as proxy
+
+for path, status in (("/v1/tools/search", 200), ("/v1/tools/fetch", 403),
+                     ("/v1/tools/search_fetch", 200)):
+    rows = []
+    reply_headers = []
+    handler = SimpleNamespace(
+        _authorized=lambda: True, _key_id=lambda: "fixture-key-id",
+        _request_realm=lambda: "cn", _json_extra_headers=None,
+        _payload_or_error=lambda: {"query": "private query", "url": "https://private.test"},
+    )
+    handler._json = lambda code, body: reply_headers.extend(handler._json_extra_headers)
+    response = {"error": {"code": "target_policy_denied", "message": "private URL"}} if status >= 400 else {}
+    with mock.patch.object(gw, "handle", return_value=(status, response)), \
+            mock.patch.object(proxy, "_persist_usage", side_effect=lambda row, label: rows.append(row)):
+        proxy.Handler._route_web_gateway(handler, path)
+    row = rows[0] if rows else {}
+    check("web usage row and response share request id: " + path,
+          len(rows) == 1 and row.get("request_id") == dict(reply_headers).get("X-Request-Id")
+          and row.get("request_id") and row.get("status") == status
+          and row.get("kind") == row.get("cost_policy") == "web"
+          and row.get("key") == "fixture-key-id" and row.get("credit") == 0
+          and row.get("realm") == "cn" and row.get("elapsed_ms", -1) >= 0, row)
+    check("web usage excludes request content", "private" not in json.dumps(row)
+          and handler._json_extra_headers is None, row)
 
 print()
 print("PASS=%d FAIL=%d" % (PASS, FAIL))
