@@ -12838,6 +12838,8 @@ def runtime_settings_view():
         "daily_chat_models_max": wb_settings.DAILY_CHAT_MODELS_MAX,
         "daily_chat_prefer_flash":
             wb_settings.daily_chat_prefer_flash(ACCOUNTS_DIR),
+        "cn_rewards_random_enabled":
+            wb_settings.cn_rewards_random_enabled(ACCOUNTS_DIR),
         "daily_chat_budget": wb_settings.daily_chat_budget(
             ACCOUNTS_DIR, default=wb_accounts.WEB_BUDGET_DEFAULT),
         "daily_chat_budget_default": wb_accounts.WEB_BUDGET_DEFAULT,
@@ -26806,6 +26808,12 @@ class Handler(BaseHTTPRequestHandler):
                     "invalid_request_error")
             reply["daily_chat_models"] = \
                 wb_settings.set_daily_chat_models(ACCOUNTS_DIR, raw)
+        if "cn_rewards_random_enabled" in payload:
+            try:
+                reply["cn_rewards_random_enabled"] = wb_settings.set_cn_rewards_random_enabled(
+                    ACCOUNTS_DIR, payload["cn_rewards_random_enabled"])
+            except ValueError as exc:
+                return self._error(400, str(exc), "invalid_request_error")
         if "daily_chat_prefer_flash" in payload:
             raw = payload.get("daily_chat_prefer_flash")
             if not isinstance(raw, bool):
