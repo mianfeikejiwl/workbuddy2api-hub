@@ -11,6 +11,7 @@ import fnmatch
 import hashlib
 import hmac
 import json
+import math
 import os
 import random
 import re
@@ -18,6 +19,7 @@ import secrets
 import threading
 import time
 
+import wb_client_aliases
 import wb_time
 
 DEFAULT_PANEL_PASSWORD = "admin"
@@ -598,6 +600,19 @@ def _clean_daily_token_limit(value):
         return 0
 
 
+def clean_credit_limit(value):
+    """每 Key 累计积分额度归一：正数 = 上限（积分，保留两位小数），0/脏值 = 不限。
+
+    与 daily_token_limit 不同，这里单位是**积分**（上游按模型倍率实际扣的分数，
+    见 usage.jsonl 的 credit 字段），所以允许小数——单次对话常常只扣 0.x 分。
+    """
+    try:
+        number = float(value or 0)
+        return max(0.0, round(number, 2)) if math.isfinite(number) else 0.0
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+
+
 def _clean_key_entry(entry):
     """Normalize one stored key entry; returns None when unusable.
 
@@ -629,6 +644,7 @@ def _clean_key_entry(entry):
         "accounts": _clean_account_refs(entry.get("accounts")),
         "concurrency_limit": concurrency,
         "daily_token_limit": _clean_daily_token_limit(entry.get("daily_token_limit")),
+        "credit_limit": clean_credit_limit(entry.get("credit_limit")),
         "enabled": False if deleted_at else entry.get("enabled", True) is not False,
         "created_at": entry.get("created_at") or wb_time.strftime("%Y/%m/%d %H:%M"),
         "deleted_at": deleted_at,
@@ -1572,6 +1588,60 @@ def set_unified_models(accounts_dir, raw):
     return cleaned
 
 
+
+
+# ---------------------------------------------------------------------------
+# Claude 前缀别名 / 推理强度归一化（issue #853 后续：客户端直连）
+#
+# 两张表都是「客户端发什么 → 上游该收到什么」的映射，和上面的精确别名表互不
+# 影响：
+#   claude_aliases  - 前缀匹配，claude-sonnet-5 / claude-opus-4-1 ... 都归到
+#                     各自的真实模型 id；精确别名表仍然优先（先查精确表）。
+#   effort_aliases  - 推理档位，xhigh / ultra -> max。
+# 缺省（键不存在）时用代码内置的默认表 + 环境变量，见 wb_client_aliases。
+# 显式关：claude_aliases_enabled / effort_aliases_enabled 存 False，或
+# WB_CLAUDE_ALIASES / WB_EFFORT_ALIASES 设成 off。
+# ---------------------------------------------------------------------------
+CLAUDE_ALIASES_KEY = "claude_aliases"
+CLAUDE_ALIASES_ENABLED_KEY = "claude_aliases_enabled"
+EFFORT_ALIASES_KEY = "effort_aliases"
+EFFORT_ALIASES_ENABLED_KEY = "effort_aliases_enabled"
+MAX_EFFORT_ALIASES = 32
+MAX_EFFORT_ALIAS_LEN = 32
+
+
+def _client_alias_enabled(accounts_dir, settings_key, env_key):
+    configured = load(accounts_dir).get(settings_key)
+    if isinstance(configured, bool):
+        return configured
+    return os.environ.get(env_key, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def claude_aliases(accounts_dir):
+    """The stored ``claude-*`` prefix table (empty when the operator stored none)."""
+    raw = load(accounts_dir).get(CLAUDE_ALIASES_KEY)
+    return wb_client_aliases.parse_pairs(raw)
+
+
+def claude_aliases_enabled(accounts_dir):
+    """Whether the operator opted into Claude prefix aliases."""
+    return _client_alias_enabled(
+        accounts_dir, CLAUDE_ALIASES_ENABLED_KEY, "WB_CLAUDE_ALIASES_ENABLED")
+
+
+def set_claude_aliases(accounts_dir, raw):
+    cleaned = wb_client_aliases.parse_pairs(raw)
+    for prefix, target in cleaned.items():
+        if len(prefix) > MAX_MODEL_ALIAS_LEN or len(target) > MAX_MODEL_ALIAS_LEN:
+            raise ValueError("claude alias names must be at most %d characters"
+                             % MAX_MODEL_ALIAS_LEN)
+    with _lock:
+        data = load(accounts_dir)
+        data[CLAUDE_ALIASES_KEY] = cleaned
+        save(accounts_dir, data)
+    return cleaned
+
+
 def resolve_unified_model(name, realm, directory):
     """按出口把对外统一名解析成真实 model id。
 
@@ -1593,6 +1663,64 @@ def resolve_unified_model(name, realm, directory):
     return mapping.get(r, name)
 
 
+def set_claude_aliases_enabled(accounts_dir, enabled):
+    enabled = bool(enabled)
+    with _lock:
+        data = load(accounts_dir)
+        data[CLAUDE_ALIASES_ENABLED_KEY] = enabled
+        save(accounts_dir, data)
+    return enabled
+
+
+def effective_claude_aliases(accounts_dir):
+    """The prefix table to apply: nothing when the switch is off."""
+    if not claude_aliases_enabled(accounts_dir):
+        return {}
+    return wb_client_aliases.claude_table(claude_aliases(accounts_dir))
+
+
+def effort_aliases(accounts_dir):
+    """The stored effort table (empty when the operator stored none)."""
+    raw = load(accounts_dir).get(EFFORT_ALIASES_KEY)
+    return wb_client_aliases.parse_pairs(raw)
+
+
+def effort_aliases_enabled(accounts_dir):
+    """Whether the operator opted into effort-level normalization."""
+    return _client_alias_enabled(
+        accounts_dir, EFFORT_ALIASES_ENABLED_KEY, "WB_EFFORT_ALIASES_ENABLED")
+
+
+def set_effort_aliases(accounts_dir, raw):
+    cleaned = wb_client_aliases.parse_pairs(raw)
+    if len(cleaned) > MAX_EFFORT_ALIASES:
+        raise ValueError("effort alias table holds at most %d entries"
+                         % MAX_EFFORT_ALIASES)
+    for source, target in cleaned.items():
+        if len(source) > MAX_EFFORT_ALIAS_LEN or len(target) > MAX_EFFORT_ALIAS_LEN:
+            raise ValueError("effort alias names must be at most %d characters"
+                             % MAX_EFFORT_ALIAS_LEN)
+    with _lock:
+        data = load(accounts_dir)
+        data[EFFORT_ALIASES_KEY] = cleaned
+        save(accounts_dir, data)
+    return cleaned
+
+
+def set_effort_aliases_enabled(accounts_dir, enabled):
+    enabled = bool(enabled)
+    with _lock:
+        data = load(accounts_dir)
+        data[EFFORT_ALIASES_ENABLED_KEY] = enabled
+        save(accounts_dir, data)
+    return enabled
+
+
+def effective_effort_aliases(accounts_dir):
+    """The effort table to apply: nothing when the switch is off."""
+    if not effort_aliases_enabled(accounts_dir):
+        return {}
+    return wb_client_aliases.effort_table(effort_aliases(accounts_dir))
 # 清单写进客户端配置后会被逐条展开；200 条已远超任何出口的模型数，上限只挡
 # 手编 settings.json 把客户端配置撑爆。
 MAX_AGENT_MODELS = 200

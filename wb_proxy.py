@@ -25,6 +25,7 @@ import hashlib
 import heapq
 import http.client
 import io
+import shutil
 import ipaddress
 from collections import OrderedDict, deque
 import re
@@ -74,6 +75,7 @@ import wb_activity
 import wb_audio
 import wb_atrest
 import wb_catalog
+import wb_client_aliases
 import wb_codearts
 import wb_egress
 import wb_ipintel
@@ -86,6 +88,7 @@ import wb_pool_scope
 import wb_pool_text
 import wb_pricing
 import wb_usage_io
+import wb_keyquota
 from wb_usage_board import UsageBoard
 import wb_settings
 import wb_webprompts
@@ -100,6 +103,7 @@ import wb_updates
 import wb_update_request
 import wb_time
 import wb_external_api
+import wb_data_backup
 IS_WINDOWS = os.name == "nt"
 
 
@@ -1206,9 +1210,103 @@ def client_facing_model(handler, model):
     sent sees a mismatch. Falling back to `model` keeps every un-aliased request
     byte-identical. Module-level so the streaming helpers and the tests that
     drive them with a stub handler can call it too.
+
+    The ``claude-*`` prefix table is the exception: it is not an operator alias
+    the client knows about, it is the only name a Claude client *can* send.
+    Echoing it back would make the user believe Claude answered; ``model`` (the
+    real id) is what the request actually ran on, so that is echoed instead.
     """
+    if str(getattr(handler, "_claude_alias", "") or "").strip():
+        return model
     original = str(getattr(handler, "_client_model", "") or "").strip()
     return original or model
+
+
+def claude_alias_table():
+    """The ``claude-*`` prefix table in force, or ``{}`` when switched off."""
+    try:
+        return wb_settings.effective_claude_aliases(ACCOUNTS_DIR)
+    except Exception:
+        return {}
+
+
+def effort_alias_table():
+    """The effort alias table in force, or ``{}`` when switched off."""
+    try:
+        return wb_settings.effective_effort_aliases(ACCOUNTS_DIR)
+    except Exception:
+        return {}
+
+
+def _supported_efforts(model):
+    """The levels the catalog declares for `model` (empty when unknown)."""
+    try:
+        return model_reasoning_meta(model).get("supportedEfforts") or []
+    except Exception:
+        return []
+
+
+def _apply_claude_model_alias(handler, payload):
+    """Resolve a Claude Desktop ``claude-*`` model name to a real upstream id.
+
+    Claude's "third-party inference" panel only accepts ids shaped like
+    ``claude-*`` and the upstream serves none of them (``claude-sonnet-5`` ->
+    ``400 / 11102``), so the client could not be pointed here at all. The
+    prefix table (settings -> env -> built-in; see ``wb_client_aliases``)
+    resolves the request. Nothing is mapped when the table is empty, so an
+    operator can switch this off and keep the old behaviour byte-for-byte.
+    """
+    table = claude_alias_table()
+    if not table or not isinstance(payload, dict):
+        return ""
+    before, after = wb_client_aliases.apply_claude_alias(payload, table)
+    if not before:
+        return ""
+    try:
+        handler._claude_alias = after
+    except Exception:
+        pass
+    log("alias: claude model %s -> %s" % (before, after))
+    return after
+
+
+def _normalize_effort_in_body(payload, model, handler=None):
+    """Rewrite effort aliases (``xhigh`` / ``ultra``) to a level the model runs.
+
+    Runs before ``map_reasoning_effort`` reads the value: that function rewrites
+    anything the catalog does not declare to the *model default*, which for
+    ``deepseek-v4.1-flash`` is ``high`` - i.e. a client asking for its top level
+    would silently get less thinking than the middle of the range. A model that
+    does publish the level keeps it (``deepseek-v4-pro`` publishes ``xhigh``).
+
+    Logged as ``effort_from`` / ``effort_to`` so "what did the upstream actually
+    receive" is answerable from the log alone (the handoff for this change asked
+    for exactly that).
+    """
+    if not isinstance(payload, dict):
+        return ""
+    table = effort_alias_table()
+    if not table:
+        return ""
+    before, after = wb_client_aliases.normalize_effort(
+        payload, model, table, _supported_efforts(model))
+    if not before:
+        return ""
+    key = "-"
+    if handler is not None:
+        try:
+            key = key_label(handler._key_id()) or "-"
+        except Exception:
+            key = "-"
+    log("effort: model=%s effort_from=%s effort_to=%s key=%s"
+        % (model, before, after, key))
+    return after
+
+
+def _normalize_client_effort(handler, payload):
+    """Request-handler wrapper: normalise the client's effort alias in place."""
+    model = str(payload.get("model") or "") if isinstance(payload, dict) else ""
+    return _normalize_effort_in_body(payload, model, handler)
 
 
 # The WorkBuddy AI desktop app caches its account product config here on every
@@ -1809,6 +1907,27 @@ def record_usage(model, usage, stream=None, elapsed_ms=None, ttft_ms=None, gen_m
     except Exception:
         pass
     return row
+
+
+def key_credit_exhausted(key_entry, key_id):
+    """这个 API Key 的累计积分额度是否已经用完。
+
+    返回 (exhausted, used, limit)。limit <= 0 视为不限，永远 False。
+    「用完」= 已记账积分 >= 上限，与日 token 限量同一口径：不预判本次成本，
+    因此最后一单可能略微超额（积分只有请求结束才知道）。
+    """
+    try:
+        limit = float((key_entry or {}).get("credit_limit") or 0)
+    except (TypeError, ValueError):
+        limit = 0.0
+    if limit <= 0:
+        return False, 0.0, 0.0
+    try:
+        used = wb_keyquota.used(USAGE_DIR, key_id)
+    except Exception as exc:
+        log("credit quota check failed: %s" % (exc,))
+        return False, 0.0, limit
+    return round(used, 8) >= limit, used, limit
 
 
 def record_upstream_usage(upstream, requested_model, usage, **kwargs):
@@ -8434,6 +8553,14 @@ def _new_analytics_stat():
         }
 
 
+_MODEL_CREDIT_SAMPLE_FIELDS = ("credit_sample_tokens", "credit_sample_credits",
+                               "credit_sample_requests")
+
+
+def _new_analytics_model_stat():
+    return {**_new_analytics_stat(), **dict.fromkeys(_MODEL_CREDIT_SAMPLE_FIELDS, 0)}
+
+
 # Rows the per-key table folds traffic into when no real key id applies.
 # `before` and `anon` are told apart by whether the row carries a `key` field
 # at all: rows written before this feature existed have none, and their number
@@ -8570,6 +8697,12 @@ def _fold_usage_analytics(row, realm, maps, half, pricing_on=None, also=None,
     _priced_note(priced, row, cost, pricing)
     cost_cny = cost["cny"] if cost["known"] else 0.0
     vals = _analytics_row_values(row)
+    # Zero also means "credit missing" in legacy rows. Pair tokens and credits
+    # only on completed text requests with an actual positive charge.
+    sample_tokens = 0
+    if (not is_err and (row.get("kind") or "chat") == "chat"
+            and vals[5] > 0 and math.isfinite(vals[5])):
+        sample_tokens = max(0, vals[4] or (vals[0] + vals[1]))
     acct_uid = row.get("account") or "(unattributed)"
     m_id = row.get("model") or "(unknown)"
     # A row written before this feature existed has no `key` field at all; a
@@ -8603,8 +8736,13 @@ def _fold_usage_analytics(row, realm, maps, half, pricing_on=None, also=None,
         model = tgt["models"].get(m_id)
         if model is None:
             model = tgt["models"][m_id] = {"model": m_id,
-                                           stat_key: _new_analytics_stat()}
-        _feed_analytics(model[stat_key], vals, is_err, cost_cny)
+                                           stat_key: _new_analytics_model_stat()}
+        model_stat = model[stat_key]
+        _feed_analytics(model_stat, vals, is_err, cost_cny)
+        if sample_tokens:
+            model_stat["credit_sample_tokens"] += sample_tokens
+            model_stat["credit_sample_credits"] += vals[5]
+            model_stat["credit_sample_requests"] += 1
 
         km = tgt["keys"].get(k_id)
         if km is None:
@@ -9049,7 +9187,7 @@ def _merge_analytics_halves(all_maps, win_maps):
         if shared:
             window_stat = dict(stat)
         elif win is None:
-            window_stat = _new_analytics_stat()
+            window_stat = _new_analytics_model_stat()
         else:
             window_stat = win["window"]
         model_map[m_id] = {"model": m_id, "window": window_stat,
@@ -9702,7 +9840,7 @@ def _add_analytics_window_maps(dst, src, half=_ANALYTICS_WINDOW):
         tgt = dst["models"].get(mid)
         if tgt is None:
             tgt = dst["models"][mid] = {"model": mid,
-                                        stat: _new_analytics_stat()}
+                                        stat: _new_analytics_model_stat()}
         _add_analytics_stat(tgt[stat], entry[stat])
     for kid, entry in src["keys"].items():
         tgt = dst["keys"].get(kid)
@@ -11612,6 +11750,11 @@ def _usage_cache_stat_ok(stat):
     return True
 
 
+def _usage_cache_model_stat_ok(stat):
+    return _usage_cache_stat_ok(stat) and all(
+        _usage_cache_number(stat.get(field)) for field in _MODEL_CREDIT_SAMPLE_FIELDS)
+
+
 def _usage_cache_models_ok(models):
     """analytics 的 {model: {requests, tokens, reasoning, cost_cny}} 表。"""
     if not isinstance(models, dict):
@@ -11654,7 +11797,7 @@ def _usage_cache_analytics_window_ok(maps):
             return False
         if not isinstance(entry.get("model"), str):
             return False
-        if not _usage_cache_stat_ok(entry.get("window")):
+        if not _usage_cache_model_stat_ok(entry.get("window")):
             return False
     for kid, entry in keys.items():
         if not isinstance(kid, str) or not isinstance(entry, dict):
@@ -11743,7 +11886,7 @@ def _usage_cache_analytics_ok(maps):
             return False
         if not isinstance(entry.get("model"), str):
             return False
-        if not _usage_cache_stat_ok(entry.get("all_time")):
+        if not _usage_cache_model_stat_ok(entry.get("all_time")):
             return False
     for kid, entry in keys.items():
         if not isinstance(kid, str) or not isinstance(entry, dict):
@@ -12754,6 +12897,10 @@ def runtime_settings_view():
             # daily_token_limit 只存不显会让面板把日限量画成 0，用户以为没设过，
             # 再保存一次就把真实值写回 0（与 #592 同类的坑）。
             "daily_token_limit": int(entry.get("daily_token_limit") or 0),
+            # credit_limit 同理：累计积分额度（0 = 不限）。顺带回一个已用量，
+            # 面板才能显示「已用 / 上限」，否则每次都画成 0 让人以为没设过。
+            "credit_limit": float(entry.get("credit_limit") or 0),
+            "credit_used": round(wb_keyquota.used(USAGE_DIR, entry.get("id") or ""), 2),
             # concurrency_limit 上游只存不显：面板读不到就显示 0，用户以为没设过，
             # 再保存一次又把真实值写回 0。
             "concurrency_limit": int(entry.get("concurrency_limit") or 0),
@@ -12809,6 +12956,12 @@ def runtime_settings_view():
         "model_aliases_enabled": wb_settings.model_aliases_enabled(ACCOUNTS_DIR),
         "unified_models": wb_settings.unified_models(ACCOUNTS_DIR),
         "unified_models_enabled": wb_settings.unified_models_enabled(ACCOUNTS_DIR),
+        # 客户端直连用的两张表：claude-* 前缀映射、推理档位别名。返回生效值
+        # （环境变量与内置默认已合并），面板只需展示与覆盖。
+        "claude_aliases": wb_settings.effective_claude_aliases(ACCOUNTS_DIR),
+        "claude_aliases_enabled": wb_settings.claude_aliases_enabled(ACCOUNTS_DIR),
+        "effort_aliases": wb_settings.effective_effort_aliases(ACCOUNTS_DIR),
+        "effort_aliases_enabled": wb_settings.effort_aliases_enabled(ACCOUNTS_DIR),
         "filter_models_by_key": wb_settings.filter_models_by_key(ACCOUNTS_DIR),
         "reasoning_effort_map": wb_settings.reasoning_effort_map(ACCOUNTS_DIR),
         "models_only_available": wb_settings.models_only_available(ACCOUNTS_DIR),
@@ -12918,7 +13071,7 @@ def runtime_settings_view():
         "accounts_dir": ACCOUNTS_DIR,
         "usage_dir": USAGE_DIR,
         "settings_file": wb_settings.settings_path(ACCOUNTS_DIR),
-        "version": "2.2.5",
+        "version": "2.2.7",
     }
 def current_account():
     """Account used for display purposes (health / usage summaries)."""
@@ -17016,9 +17169,17 @@ def build_starved_retry_body(body, floor=0):
 
 def build_upstream_body(payload):
     model = payload.get("model") or ""
-    # Map an unsupported level before anything below reads the effort, so the
-    # thinking backfill and the logged level describe what will actually run.
-    payload = map_reasoning_effort(dict(payload), model)
+    # Two rewrites before anything below reads the effort, in this order:
+    #   1. the client's alias for "more than the picker allows" (xhigh/ultra)
+    #      becomes the level this build actually runs at;
+    #   2. an unsupported level becomes the catalog default.
+    # Reversing them would let step 2 turn xhigh into the model default (high)
+    # before step 1 ever sees it. Bodies built in-process (probes, agent config,
+    # sub-bridge) never pass the request handler, so the normalisation happens
+    # here as well; it is idempotent, so an already-rewritten request is a no-op.
+    payload = dict(payload)
+    _normalize_effort_in_body(payload, model)
+    payload = map_reasoning_effort(payload, model)
     # Resolve the effective thinking state before the backfill below: while
     # thinking is on, the upstream requires reasoning_content on every
     # assistant message, whether or not the client kept a reasoning trace.
@@ -22990,7 +23151,7 @@ class Handler(BaseHTTPRequestHandler):
             super().finish()
         except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
             pass
-    server_version = "wb-proxy/2.2.5"
+    server_version = "wb-proxy/2.2.7"
     def log_message(self, fmt, *args):
         # 静默过滤前端看板高频定时心跳的正常 200 GET 请求（/logs、/usage、/accounts 轮询等）
         # 避免自增死循环刷屏与日志污染。遇 4xx/5xx 异常或所有非 GET 业务操作依然如实记录。
@@ -23441,6 +23602,61 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
+
+    def _data_backup(self, action):
+        if not self._panel_ok():
+            self.close_connection = True
+            return self._error(401, "panel password required", "invalid_request_error")
+        data = wb_data_backup.roots(ACCOUNTS_DIR, USAGE_DIR)
+        if action == "export":
+            try:
+                with wb_data_backup.export_file(data) as archive:
+                    wb_data_backup.write_zip(data, archive)
+                    size = archive.tell()
+                    archive.seek(0)
+                    name = "workbuddy-data-" + wb_time.strftime("%Y%m%d-%H%M%S") + ".zip"
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/zip")
+                    self.send_header("Content-Disposition", 'attachment; filename="%s"' % name)
+                    self.send_header("Content-Length", str(size))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    try:
+                        shutil.copyfileobj(archive, self.wfile, wb_data_backup.CHUNK)
+                    except OSError:
+                        self.close_connection = True
+            except wb_data_backup.BackupError as exc:
+                return self._error(400, str(exc), "invalid_request_error")
+            except Exception as exc:
+                log("data backup export failed: %s" % type(exc).__name__, level="WARN")
+                return self._error(500, "Could not create the backup.", "server_error")
+            return
+        try:
+            if action == "status":
+                result = wb_data_backup.status(data)
+            elif action == "import":
+                try:
+                    size = int(self.headers.get("Content-Length") or "0")
+                except ValueError:
+                    size = 0
+                if self.headers.get("Transfer-Encoding") or not 0 < size <= wb_data_backup.MAX_BYTES:
+                    self.close_connection = True
+                    return self._error(413, "Backup upload size is out of range.", "invalid_request_error")
+                self._handle_expect_continue()
+                result = wb_data_backup.stage(data, self.rfile, size)
+            else:
+                payload = self._payload_or_error()
+                if payload is None:
+                    return
+                result = wb_data_backup.choose(data, payload.get("id"), action == "confirm")
+        except wb_data_backup.BackupError as exc:
+            self.close_connection = True
+            return self._error(400, str(exc), "invalid_request_error")
+        except Exception as exc:
+            self.close_connection = True
+            log("data backup operation failed: %s" % type(exc).__name__, level="WARN")
+            return self._error(500, "The backup operation could not be completed.", "server_error")
+        return self._json_panel(200, result)
     def _supplied_key(self):
         """The key the caller presented.
 
@@ -23869,6 +24085,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._get_pricing()
         if path == "/settings":
             return self._get_settings()
+        if path == "/settings/data-backup":
+            return self._data_backup("status")
+        if path == "/settings/data-backup/export":
+            return self._data_backup("export")
         if path == "/updates":
             return self._get_updates()
         if path == "/updates/backups":
@@ -25863,15 +26083,15 @@ class Handler(BaseHTTPRequestHandler):
         if not allowed_now:
             return self._rate_limited(MediaRateLimited(wait))
 
-        if not acquire_media_slot():
-            return self._error(
-                503, "media slots busy (%d in flight); retry shortly" % MEDIA_SLOTS,
-                "server_error")
         cost_hint = media_image_cost_hint(prepared["model"]["id"])
         spend_ok, spend_why = media_key_spend_allow(
             self._key_id(), cost_hint, int(config.get("daily_credits_per_key") or 0))
         if not spend_ok:
             return self._media_error(wb_media.MediaError("NO_CREDIT", spend_why))
+        if not acquire_media_slot():
+            return self._error(
+                503, "media slots busy (%d in flight); retry shortly" % MEDIA_SLOTS,
+                "server_error")
         excluded = set()
         tried = 0
         try:
@@ -26443,6 +26663,13 @@ class Handler(BaseHTTPRequestHandler):
                     daily_token_limit = max(0, int(daily_token_limit or 0))
                 except (TypeError, ValueError):
                     daily_token_limit = 0
+                # 累计积分额度（积分，允许小数）。与上面同一规则：请求体没带就
+                # 沿用已存值，老面板保存不会把用户的额度清成 0（不限）。
+                if "credit_limit" in item:
+                    credit_limit = item.get("credit_limit")
+                else:
+                    credit_limit = stored.get("credit_limit")
+                credit_limit = wb_settings.clean_credit_limit(credit_limit)
                 created_at = item.get("created_at") or (stored.get("created_at") if entry_id in existing else None) or wb_time.strftime("%Y/%m/%d %H:%M")
                 cleaned.append({
                     "id": entry_id,
@@ -26453,6 +26680,7 @@ class Handler(BaseHTTPRequestHandler):
                     "accounts": accounts,
                     "concurrency_limit": concurrency_limit,
                     "daily_token_limit": daily_token_limit,
+                    "credit_limit": credit_limit,
                     "enabled": enabled,
                     "created_at": created_at,
                 })
@@ -26701,6 +26929,34 @@ class Handler(BaseHTTPRequestHandler):
                                    "invalid_request_error")
             wb_settings.set_unified_models_enabled(ACCOUNTS_DIR, raw)
             reply["unified_models_enabled"] = raw
+        if "claude_aliases" in payload:
+            try:
+                cleaned = wb_settings.set_claude_aliases(
+                    ACCOUNTS_DIR, payload.get("claude_aliases"))
+            except ValueError as exc:
+                return self._error(400, str(exc), "invalid_request_error")
+            reply["claude_aliases"] = cleaned
+        if "claude_aliases_enabled" in payload:
+            raw = payload.get("claude_aliases_enabled")
+            if not isinstance(raw, bool):
+                return self._error(400, "claude_aliases_enabled must be true or false",
+                                   "invalid_request_error")
+            wb_settings.set_claude_aliases_enabled(ACCOUNTS_DIR, raw)
+            reply["claude_aliases_enabled"] = raw
+        if "effort_aliases" in payload:
+            try:
+                cleaned = wb_settings.set_effort_aliases(
+                    ACCOUNTS_DIR, payload.get("effort_aliases"))
+            except ValueError as exc:
+                return self._error(400, str(exc), "invalid_request_error")
+            reply["effort_aliases"] = cleaned
+        if "effort_aliases_enabled" in payload:
+            raw = payload.get("effort_aliases_enabled")
+            if not isinstance(raw, bool):
+                return self._error(400, "effort_aliases_enabled must be true or false",
+                                   "invalid_request_error")
+            wb_settings.set_effort_aliases_enabled(ACCOUNTS_DIR, raw)
+            reply["effort_aliases_enabled"] = raw
         if "filter_models_by_key" in payload:
             raw = payload.get("filter_models_by_key")
             if not isinstance(raw, bool):
@@ -29200,6 +29456,8 @@ class Handler(BaseHTTPRequestHandler):
         all_tools.extend(additional_tools_from_input(payload))
         custom_names = custom_tool_names(all_tools)
         chat_req = responses_to_chat(payload, compaction=compaction)
+        if req_realm != 'codearts':
+            _normalize_client_effort(self, chat_req)
         ns_map = chat_req.pop("_namespace_map", None)
         # Echo these back on the response object; see chat_to_response.
         request_meta = {
@@ -29591,6 +29849,8 @@ class Handler(BaseHTTPRequestHandler):
             chat_req = messages_to_chat(payload)
         except ValueError as exc:
             return self._anthropic_error(400, str(exc), "invalid_request_error")
+        if req_realm != 'codearts':
+            _normalize_client_effort(self, chat_req)
         model = chat_req.get("model") or "unknown"
         want_stream = bool(chat_req.get("stream"))
         session_key = extract_session_key(self.headers, chat_req)
@@ -29805,6 +30065,9 @@ class Handler(BaseHTTPRequestHandler):
         if not self._apply_pinned_route():
             return
         path = self.path.split("?")[0]
+        if path in ("/settings/data-backup/import", "/settings/data-backup/confirm",
+                    "/settings/data-backup/cancel"):
+            return self._data_backup(path.rsplit("/", 1)[1])
         if path == "/v1/accounts/authorize":
             started = time.time()
             if not self._external_authorized("account:auth"):
@@ -30071,6 +30334,22 @@ class Handler(BaseHTTPRequestHandler):
             payload = self._payload_or_error(allow_list=(path == "/accounts/import"))
         if payload is None:
             return
+        if not is_account_route:
+            # 每 Key 累计积分额度（0/缺省 = 不限）。同样放在并发槽位之前：
+            # 已经烧完的 Key 不该先排队等 WB_CHAT_SLOT_WAIT 秒再被拒。
+            # 已用积分由 wb_keyquota 从 usage.jsonl 增量合计。
+            _credit_hit, _credit_used, _credit_limit = key_credit_exhausted(
+                self.key_entry, self._key_id())
+            if _credit_hit:
+                key_name = (self.key_entry or {}).get("name") or self._key_id() or "当前 Key"
+                message = ("Credit quota exhausted for API key '%s' (%.2f of %g credits used); "
+                           "raise the limit for this key in the panel to continue"
+                           % (key_name, _credit_used, _credit_limit))
+                record_error(payload.get("model") or "unknown", 403, message,
+                             stream=payload.get("stream"), key=self._key_id())
+                if is_messages_route:
+                    return self._anthropic_error(403, message, "permission_error")
+                return self._error(403, message, "permission_error")
         if not is_account_route and not is_media_route and not is_audio_route:
             if self._maybe_web_model(payload, is_messages_route):
                 return
@@ -30087,12 +30366,16 @@ class Handler(BaseHTTPRequestHandler):
             self._client_model = str(payload.get("model") or "")
         except Exception:
             self._client_model = ""
+        self._claude_alias = ""
         try:
             aliases = wb_settings.effective_model_aliases(ACCOUNTS_DIR)
         except Exception:
             aliases = {}
         _apply_model_aliases(payload, aliases)
         _apply_background_model_alias(payload)
+        # Claude Desktop 只能填 claude-* 形式的模型 ID，上游一个都不认：先按前缀
+        # 表解析成真实 id（回程仍回显真实 id）。推理档位在路由解析最终模型后归一化。
+        _apply_claude_model_alias(self, payload)
         # 日 token 限量（单位 M，0/缺省 = 不限）。放在并发槽位之前判断：
         # 已经被限的 key 不该先排队等 WB_CHAT_SLOT_WAIT 秒再被拒。
         # 用量来自 _daily_usage 的 keytokens 视图（默认 15s 缓存）。
@@ -30185,7 +30468,6 @@ class Handler(BaseHTTPRequestHandler):
         # Only the knobs that change behaviour are logged - never message text.
         session_key = extract_session_key(self.headers, payload)
         want_stream = bool(payload.get("stream"))
-        model = payload.get("model") or "hy4-preview"
         t_start = time.time()
         explicit_realm = self._request_realm()
         req_realm = explicit_realm or CURRENT_REALM
@@ -30194,6 +30476,7 @@ class Handler(BaseHTTPRequestHandler):
         # key/banned/disabled check, so a model closed on another exit cannot
         # leak here. _client_model still holds the original for key checks.
         resolve_unified_model_in_payload(payload, req_realm)
+        model = payload.get("model") or "hy4-preview"
         if req_realm == "codearts":
             blocked = self._banned_model_error(payload.get("model")) or self._key_model_error(payload.get("model"))
             if blocked:
@@ -30201,6 +30484,7 @@ class Handler(BaseHTTPRequestHandler):
             # CodeArts 不走 WorkBuddy 的 build_upstream_body / 账号池：请求体、
             # 超时、错误映射都由 wb_codearts 负责，回程复用下面的处理器。
             return self._handle_codearts_chat(payload, session_key, req_realm)
+        _normalize_client_effort(self, payload)
         forwarded = build_upstream_body(payload)
         given = client_effort_of(payload) or payload.get("reasoning") \
             or payload.get("thinking") or payload.get("enable_thinking")
@@ -30916,6 +31200,11 @@ def _bootstrap_runtime(args):
     SYSTEM_PROMPT = args.system_prompt
     if args.accounts_dir:
         ACCOUNTS_DIR = os.path.abspath(args.accounts_dir)
+    restore_phase = wb_data_backup.apply_pending(wb_data_backup.roots(ACCOUNTS_DIR, USAGE_DIR))
+    if restore_phase == "restored":
+        log("data backup restore applied", tag="settings")
+    elif restore_phase == "failed":
+        log("data backup restore failed; original data retained", level="WARN", tag="settings")
     # 日志落库（默认关闭）：在账号池之前初始化，好让「池加载失败」这类最需要
     # 事后留档的启动日志也能进库。关闭时这里只造一个 enabled=False 的空壳，
     # 不建文件、不改日志路径。

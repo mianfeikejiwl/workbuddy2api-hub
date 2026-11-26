@@ -22,20 +22,20 @@ HTML = (ROOT / "dashboard.html").read_text(encoding="utf-8")
 STYLES = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", HTML, re.S))
 
 
-def fixture():
+def fixture(table_width=1073):
     headers = [
         '<th class="acct-check" style="text-align:center;width:32px"></th>',
-        '<th style="text-align:center;width:76px">版本</th>',
+        '<th style="text-align:center;width:62px">版本</th>',
         '<th style="text-align:left">账号</th>',
-        '<th style="text-align:center;width:84px">状态</th>',
-        '<th style="text-align:center;width:118px">今日活动</th>',
-        '<th style="text-align:center;width:150px">出口</th>',
-        '<th style="text-align:center;width:78px">权重</th>',
-        '<th style="text-align:left;width:120px">积分</th>',
-        '<th style="text-align:right;width:70px">请求</th>',
-        '<th style="text-align:right;width:88px">总 token</th>',
-        '<th style="text-align:right;width:80px">缓存</th>',
-        '<th style="text-align:center;width:232px">操作</th>',
+        '<th style="text-align:center;width:52px">状态</th>',
+        '<th style="text-align:center;width:96px">今日活动</th>',
+        '<th style="text-align:center">出口</th>',
+        '<th style="text-align:center;width:58px">权重</th>',
+        '<th style="text-align:left">积分</th>',
+        '<th style="text-align:right;width:38px">请求</th>',
+        '<th style="text-align:right;width:50px">总 token</th>',
+        '<th style="text-align:right;width:48px">缓存</th>',
+        '<th style="text-align:center;width:252px">操作</th>',
     ]
     cells = [
         '<td class="acct-check" style="text-align:center"><input type="checkbox"></td>',
@@ -66,7 +66,7 @@ def fixture():
         '<!doctype html><html data-ui="next"><head><meta charset="utf-8">'
         f"<style>{STYLES}main{{max-width:none!important;padding:0!important}}"
         "#wrap{margin-left:0!important}</style></head><body><main>"
-        '<div id="wrap" class="table-wrap" style="width:1073px;margin-left:281px">'
+        f'<div id="wrap" class="table-wrap" style="width:{table_width}px;margin-left:281px">'
         '<table class="data-cards account-cards"><thead><tr>'
         + "".join(headers)
         + "</tr></thead><tbody>"
@@ -94,12 +94,12 @@ class AccountTableStickyTests(unittest.TestCase):
         cls.browser.close()
         cls._playwright.stop()
 
-    def page(self, width, height):
+    def page(self, width, height, table_width=1073):
         page = self.browser.new_page(
             viewport={"width": width, "height": height},
             device_scale_factor=1.75,
         )
-        page.set_content(fixture(), wait_until="load")
+        page.set_content(fixture(table_width), wait_until="load")
         return page
 
     def test_desktop_scroll_pins_version_and_account_columns(self):
@@ -144,6 +144,19 @@ class AccountTableStickyTests(unittest.TestCase):
         self.assertGreaterEqual(data["nameLeft"], data["wrapLeft"] - 1)
         self.assertLessEqual(data["nameRight"], data["wrapRight"] + 1)
         self.assertNotEqual(data["coolPosition"], "sticky")
+
+    def test_wide_desktop_gives_extra_width_to_egress_and_credits(self):
+        page = self.page(1700, 950, table_width=1370)
+        try:
+            widths = page.locator("thead th").evaluate_all(
+                "cells => cells.map(cell => cell.getBoundingClientRect().width)"
+            )
+        finally:
+            page.close()
+        self.assertAlmostEqual(widths[2], 184, delta=1)
+        self.assertGreater(widths[5], 120)
+        self.assertGreater(widths[7], 112)
+        self.assertAlmostEqual(widths[-1], 252, delta=1)
 
     def test_mobile_cards_cancel_sticky_and_do_not_overflow(self):
         page = self.page(390, 844)

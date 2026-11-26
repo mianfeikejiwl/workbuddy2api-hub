@@ -380,12 +380,8 @@ table.account-cards th.acct-check input[type=checkbox]{width:15px;height:15px;
 table.account-cards td[data-label="账号"] .cool-list{display:flex;flex-direction:column;align-items:stretch;gap:2px;max-width:100%;overflow:hidden}
 table.account-cards td[data-label="账号"] .cool-pill{display:block;width:100%;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (min-width:641px){
-  /* 表格宽度跟随容器（width:100%），只有窄到放不下时才横向滚动。上一版写死
-     min-width:1228px，容器只有 1112px 时多出的 116px 被右侧固定的操作列盖住，
-     「总 token / 缓存」两列就压在操作列下面看不见了——看着像表格右侧被裁掉。
-     各列按「实测内容宽 + 12px 内边距」定宽，多余空间全部给「账号」列（昵称
-     允许折行）。定宽列合计 895px，账号列最少 200px → min-width 1095px，
-     1440 宽度的容器（1112px）刚好放得下，不再横向滚动。 */
+  /* 表格跟随容器，窄屏在表内横向滚动。账号列固定宽度，
+     出口和积分两列分摊余量，较长的昵称仍可折行。 */
   table.account-cards{table-layout:fixed;width:100%;min-width:1096px}
   /* 收窄左右内边距：后面那条 html[data-ui="next"] main table td 用了
      padding:10px 12px!important，所以这里也得带 !important 才生效。 */
@@ -407,6 +403,7 @@ table.account-cards td[data-label="账号"] .cool-pill{display:block;width:100%;
     position:sticky;left:100px;z-index:3;background:var(--panel);
     box-shadow:1px 0 0 var(--line);
   }
+  table.account-cards th:nth-child(3){width:184px}
   table.account-cards th:nth-child(1),
   table.account-cards th:nth-child(2),
   table.account-cards th:nth-child(3){z-index:4;background:var(--panel2)}
@@ -2397,6 +2394,8 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     '每分钟生图上限': 'Images per minute',
     '视频时长上限（秒）': 'Video length cap (seconds)',
     '每 Key 每日积分上限': 'Daily credits per key',
+      '积分总额度 (0 = 不限)': 'Total credit quota (0 = unlimited)',
+      '按「剩余额度」填：勾上后上面的数字是还能用多少，保存时自动换算成总量。': 'Remaining mode: the number above is how much is left; it is converted into a total when saved.',
     '生视频并发': 'Concurrent videos',
     '生视频并发超过上限时新任务<b>先排队</b>（不提交上游、不扣积分），并行任务会尽量分到不同账号上。': 'When the concurrent-video cap is reached, new tasks queue locally (not submitted upstream, no credits spent). Parallel tasks are spread across different accounts.',
     '每 Key 每日积分上限填 0 表示不限。视频时长会与模型目录里的上限取小值。': 'A daily credit cap of 0 means unlimited. The video length cap is combined with each model\'s own limit, whichever is smaller.',
@@ -3669,6 +3668,27 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     '消耗 Token': 'Tokens used',
     '消耗总 Token': 'Total tokens used',
     '消耗积分': 'Credits spent',
+    '数据备份与恢复': 'Data backup and restore',
+    '备份包含账号、设置、用量历史和订阅桥数据。请妥善保管含凭证的 ZIP。': 'The backup includes accounts, settings, usage history, and subscription bridge data. Keep the ZIP private because it contains credentials.',
+    '下载全量备份': 'Download full backup',
+    '导入备份': 'Import backup',
+    '安排恢复': 'Schedule restore',
+    '取消恢复': 'Cancel restore',
+    '正在导出备份…': 'Exporting backup…',
+    '正在上传并校验备份…': 'Uploading and validating backup…',
+    '备份已校验，可安排恢复。': 'Backup validated and ready to restore.',
+    '已安排恢复，重启网关后生效。': 'Restore scheduled for the next gateway restart.',
+    '恢复完成。恢复前的数据已保留。': 'Restore complete. The previous data was retained.',
+    '恢复失败，原数据已保留。': 'Restore failed. The original data was retained.',
+    '已取消恢复。': 'Restore cancelled.',
+    '备份状态暂不可用。': 'Backup status is currently unavailable.',
+    '重启时将用备份替换当前数据。恢复后可能需要使用备份中的面板密码。确定安排恢复？': 'The backup will replace the current data on restart. You may need the panel password in the backup. Schedule restore?',
+    '积分换算': 'Credit conversion',
+    '积分 / 百万 Token': 'credits / 1M tokens',
+    'Token / 积分': 'tokens / credit',
+    '扣分样本': 'charged requests',
+    '按当前区间内同时记录 Token 和实际扣分的成功对话估算。缓存命中和输入输出比例都会影响结果。': 'Estimated from successful chats in the current range that recorded both tokens and a credit charge. Cache hits and the mix of input and output affect the result.',
+    '暂无扣分样本': 'No charged samples',
     '消耗积分 (全出口)': 'Credits spent (all exits)',
     '消费倍率': 'Rate',
     '消费倍率 / 优惠': 'Rate / discount',
@@ -4105,6 +4125,8 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     '猫猫正在旅行途中，请稍后再来查看！': 'The cat is still travelling; check again later!'
   };
   var HANT_PHRASES = {
+      "积分总额度 (0 = 不限)": "積分總額度 (0 = 不限)",
+      "按「剩余额度」填：勾上后上面的数字是还能用多少，保存时自动换算成总量。": "按「剩餘額度」填：勾上後上面的數字是還能用多少，儲存時自動換算成總量。",
     "查看版本": "檢視版本",
     "查看全部请求与筛选": "檢視全部請求與篩選",
     "勾选用于一键配置写入客户端。保存后重新一键配置并重启客户端。": "勾選用於一鍵設定寫入用戶端。儲存後重新一鍵設定並重新啟動用戶端。",
@@ -4132,7 +4154,28 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     "语音转写 ASR": "語音轉寫 ASR",
     "今日已更新，累计与历史计算中": "今日已更新，累計與歷史計算中",
     "正在后台计算用量": "正在背景計算用量",
+    "积分换算": "積分換算",
+    "积分 / 百万 Token": "積分 / 百萬 Token",
+    "Token / 积分": "Token / 積分",
+    "扣分样本": "扣分樣本",
+    "按当前区间内同时记录 Token 和实际扣分的成功对话估算。缓存命中和输入输出比例都会影响结果。": "按目前區間內同時記錄 Token 和實際扣分的成功對話估算。快取命中和輸入輸出比例都會影響結果。",
+    "暂无扣分样本": "暫無扣分樣本",
     "统计更新于": "統計更新於",
+    "数据备份与恢复": "資料備份與還原",
+    "备份包含账号、设置、用量历史和订阅桥数据。请妥善保管含凭证的 ZIP。": "備份包含帳號、設定、用量歷史和訂閱橋資料。請妥善保管含憑證的 ZIP。",
+    "下载全量备份": "下載完整備份",
+    "导入备份": "匯入備份",
+    "安排恢复": "安排還原",
+    "取消恢复": "取消還原",
+    "正在导出备份…": "正在匯出備份…",
+    "正在上传并校验备份…": "正在上傳並驗證備份…",
+    "备份已校验，可安排恢复。": "備份已驗證，可安排還原。",
+    "已安排恢复，重启网关后生效。": "已安排還原，重新啟動閘道後生效。",
+    "恢复完成。恢复前的数据已保留。": "還原完成。還原前的資料已保留。",
+    "恢复失败，原数据已保留。": "還原失敗，原資料已保留。",
+    "已取消恢复。": "已取消還原。",
+    "备份状态暂不可用。": "備份狀態暫時無法使用。",
+    "重启时将用备份替换当前数据。恢复后可能需要使用备份中的面板密码。确定安排恢复？": "重新啟動時將以備份取代目前資料。還原後可能需要使用備份中的面板密碼。確定安排還原？",
     "统计更新失败，显示上次结果": "統計更新失敗，顯示上次結果",
     "用量统计失败，请刷新重试": "用量統計失敗，請重新整理後重試",
     "无法读取用量统计": "無法讀取用量統計",
@@ -11270,6 +11313,19 @@ body.win-capped #pageAnalytics section.panel .usage-dimension-scroll{
         </div>
       </section>
 
+      <section id="dataBackupSection" data-cat="system" data-settings-group="system">
+        <h2>数据备份与恢复</h2>
+        <p class="layout-muted">备份包含账号、设置、用量历史和订阅桥数据。请妥善保管含凭证的 ZIP。</p>
+        <div class="toolbar" style="margin:10px 0">
+          <button type="button" id="dataBackupExport" onclick="exportDataBackup(this)">下载全量备份</button>
+          <button type="button" class="sec" id="dataBackupImport" onclick="document.getElementById('dataBackupFile').click()">导入备份</button>
+          <input type="file" id="dataBackupFile" accept=".zip,application/zip" hidden onchange="importDataBackup(this)">
+          <button type="button" class="sec" id="dataBackupConfirm" hidden onclick="chooseDataBackup(true)">安排恢复</button>
+          <button type="button" class="sec" id="dataBackupCancel" hidden onclick="chooseDataBackup(false)">取消恢复</button>
+        </div>
+        <div id="dataBackupStatus" class="layout-muted" role="status" aria-live="polite"></div>
+      </section>
+
       <section data-cat="system" data-settings-group="system">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
           <div>
@@ -16662,9 +16718,9 @@ function renderAccounts(){
     + '<th style="text-align:left">账号</th>'
     + '<th style="text-align:center;width:52px">状态</th>'
     + '<th style="text-align:center;width:96px" title="今日活动">活动</th>'
-    + '<th style="text-align:center;width:120px">出口</th>'
+    + '<th style="text-align:center">出口</th>'
     + '<th style="text-align:center;width:58px">权重</th>'
-    + '<th style="text-align:left;width:112px">积分</th>'
+    + '<th style="text-align:left">积分</th>'
     + '<th style="text-align:right;width:38px">请求</th>'
     + '<th style="text-align:right;width:50px" title="总 token">Token</th>'
     + '<th style="text-align:right;width:48px">缓存</th>'
@@ -21042,6 +21098,8 @@ async function loadSettings(showToast, opts){
       accounts: Array.isArray(k.accounts) ? k.accounts.slice() : [],
       concurrency_limit: parseInt(k.concurrency_limit || 0, 10) || 0,
       daily_token_limit: parseInt(k.daily_token_limit || 0, 10) || 0,
+      credit_limit: parseFloat(k.credit_limit || 0) || 0,
+      credit_used: parseFloat(k.credit_used || 0) || 0,
       enabled: k.enabled !== false,
       created_at: k.created_at || '',
       _editing: false,
@@ -21075,6 +21133,7 @@ async function loadSettings(showToast, opts){
       keepSelect.value = String((typeof data.keep_backups === 'number') ? data.keep_backups : 1);
     }
     loadUpdateBackups();
+    loadDataBackup();
     const updateProxy = document.getElementById('setUpdateProxySlot');
     if(updateProxy){
       const choices = Array.isArray(data.update_check_proxy_slots)
@@ -22751,6 +22810,119 @@ function applyUpdateStatus(data){
   }
 }
 
+const DATA_BACKUP_URL = '/settings/data-backup';
+let pendingDataBackup = null;
+let dataBackupBusy = false;
+
+function showDataBackup(data, message){
+  if(data) pendingDataBackup = data;
+  const phase = (pendingDataBackup || {}).phase;
+  const label = {
+    ready: '备份已校验，可安排恢复。',
+    pending: '已安排恢复，重启网关后生效。',
+    restored: '恢复完成。恢复前的数据已保留。',
+    failed: '恢复失败，原数据已保留。',
+    cancelled: '已取消恢复。',
+  }[phase] || '';
+  document.getElementById('dataBackupImport').disabled = dataBackupBusy || phase === 'pending';
+  document.getElementById('dataBackupConfirm').hidden = phase !== 'ready';
+  document.getElementById('dataBackupCancel').hidden = phase !== 'ready' && phase !== 'pending';
+  document.getElementById('dataBackupConfirm').disabled = dataBackupBusy;
+  document.getElementById('dataBackupCancel').disabled = dataBackupBusy;
+  document.getElementById('dataBackupStatus').textContent = message ?? label;
+}
+
+async function loadDataBackup(){
+  if(dataBackupBusy || !document.getElementById('dataBackupStatus')) return;
+  try{
+    const result = await getJSON(DATA_BACKUP_URL);
+    if(!dataBackupBusy) showDataBackup(result);
+  }catch(e){
+    if(!dataBackupBusy) showDataBackup(null, '备份状态暂不可用。');
+  }
+}
+
+async function dataBackupFetch(url, options){
+  const res = await fetch(url, {...options, cache:'no-store', headers: authHeaders(options && options.headers)});
+  if(res.status === 401 || res.status === 403){
+    panelSessionLost();
+    throw new Error('unauthorized');
+  }
+  if(!res.ok){
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data.error && data.error.message) || 'HTTP ' + res.status);
+  }
+  return res;
+}
+
+async function exportDataBackup(btn){
+  btn.disabled = true;
+  const stamp = new Date().toISOString().slice(0,19).replace(/[-:T]/g,'');
+  const name = 'workbuddy-data-' + stamp + '.zip';
+  try{
+    let file = null;
+    // File System Access streams large backups directly to disk when available.
+    if(typeof window.showSaveFilePicker === 'function'){
+      try { file = await window.showSaveFilePicker({suggestedName: name}); }
+      catch(e){ if(e.name === 'AbortError') return; }
+    }
+    showDataBackup(null, '正在导出备份…');
+    const res = await dataBackupFetch(DATA_BACKUP_URL + '/export');
+    if(file && res.body){
+      await res.body.pipeTo(await file.createWritable());
+    }else{
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    showDataBackup();
+  }catch(e){
+    showDataBackup(null, e.message);
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function importDataBackup(input){
+  const file = input.files && input.files[0];
+  input.value = '';
+  if(!file || dataBackupBusy) return;
+  dataBackupBusy = true;
+  showDataBackup(null, '正在上传并校验备份…');
+  try{
+    pendingDataBackup = await (await dataBackupFetch(DATA_BACKUP_URL + '/import', {
+      method:'POST', headers:{'Content-Type':'application/zip'}, body:file,
+    })).json();
+    showDataBackup();
+  }catch(e){
+    showDataBackup(null, e.message);
+  }finally{
+    dataBackupBusy = false;
+    const status = document.getElementById('dataBackupStatus').textContent;
+    showDataBackup(null, status);
+  }
+}
+
+async function chooseDataBackup(confirmRestore){
+  if(dataBackupBusy || !pendingDataBackup || !pendingDataBackup.id) return;
+  if(confirmRestore && !window.confirm('重启时将用备份替换当前数据。恢复后可能需要使用备份中的面板密码。确定安排恢复？')) return;
+  dataBackupBusy = true;
+  showDataBackup();
+  try{
+    pendingDataBackup = await postJSON(DATA_BACKUP_URL + (confirmRestore ? '/confirm' : '/cancel'),
+      {id:pendingDataBackup.id});
+    showDataBackup();
+  }catch(e){
+    showDataBackup(null, e.message);
+  }finally{
+    dataBackupBusy = false;
+    const status = document.getElementById('dataBackupStatus').textContent;
+    showDataBackup(null, status);
+  }
+}
+
 async function loadUpdateStatus(){
   try {
     applyUpdateStatus(await getJSON('/updates'));
@@ -23270,6 +23442,18 @@ function renderKeyRows(){
         +     '<input type="number" min="0" step="1" id="editKeyDaily_' + i + '" value="' + (row.daily_token_limit || '') + '" placeholder="0 代表不限制" '
         +       'style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;color:var(--fg)">'
         +   '</div>'
+        +   '<div>'
+        +     '<div style="font-size:12px;color:var(--dim);margin-bottom:4px;font-weight:500">积分总额度 <span style="color:var(--dim-light)">(0 = 不限)</span></div>'
+        +     '<input type="number" min="0" step="0.01" id="editKeyCredit_' + i + '" value="' + (row.credit_limit || '') + '" placeholder="如 1000，用完这个 Key 就停用" '
+        +       'style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;color:var(--fg)">'
+        +     '<label style="display:flex;align-items:flex-start;gap:6px;margin-top:6px;font-size:11.5px;color:var(--dim);cursor:pointer;line-height:1.5">'
+        +       '<input type="checkbox" id="editKeyCreditRemain_' + i + '" style="margin-top:2px"' + (row._creditRemain ? ' checked' : '') + '>'
+        +       '<span>按「剩余额度」填：勾上后上面的数字是还能用多少，保存时自动换算成总量。</span>'
+        +       '<span style="display:block;color:var(--dim-light)">已用 '
+        +         (row.credit_used || 0).toFixed(2) + ' · 当前剩余 '
+        +         (((row.credit_limit || 0) > 0) ? Math.max(0, (row.credit_limit || 0) - (row.credit_used || 0)).toFixed(2) : '不限') + '</span>'
+        +     '</label>'
+        +   '</div>'
         +   '<div style="grid-column:1 / -1">'
         +     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">'
         +       '<div style="font-size:12px;color:var(--dim);font-weight:500">模型准入 <span id="editKeyModelsSummary_' + i + '" style="color:var(--dim-light)"></span></div>'
@@ -23334,6 +23518,10 @@ function renderKeyRows(){
     const dailyBadge = (row.daily_token_limit && row.daily_token_limit > 0)
       ? '<span class="badge s mini" style="font-size:11px">日限 ' + row.daily_token_limit + 'M</span>'
       : '';
+    const creditLeft = (row.credit_limit && row.credit_limit > 0) ? Math.max(0, row.credit_limit - (row.credit_used || 0)) : 0;
+    const creditBadge = (row.credit_limit && row.credit_limit > 0)
+      ? '<span class="badge s mini" style="font-size:11px' + (creditLeft <= 0 ? ';color:var(--bad)' : '') + '">积分 ' + (row.credit_used || 0).toFixed(2) + ' / ' + row.credit_limit + (creditLeft > 0 ? ' · 剩 ' + creditLeft.toFixed(2) : ' · 已用完') + '</span>'
+      : '';
     const modelBadge = (Array.isArray(row.models) && row.models.length)
       ? '<span class="badge s" style="font-size:11px">限 ' + esc(modelPatternsText(row.models)) + '</span>'
       : '';
@@ -23355,6 +23543,7 @@ function renderKeyRows(){
         +       accountBadge
         +       concBadge
         +       dailyBadge
+        +       creditBadge
       +     '</div>'
       +     '<div style="font-size:12px;color:var(--dim);display:flex;align-items:center;gap:16px;flex-wrap:wrap">'
       +       '<span>Key: <span class="mono" style="color:var(--fg);font-weight:500">' + esc(displayKey) + '</span></span>'
@@ -23695,6 +23884,21 @@ async function saveSingleKey(index, btn){
     row.concurrency_limit = Math.max(0, parseInt((concInput ? concInput.value : row.concurrency_limit) || 0, 10) || 0);
   const dailyInput = document.getElementById('editKeyDaily_' + index);
   row.daily_token_limit = Math.max(0, parseInt((dailyInput ? dailyInput.value : row.daily_token_limit) || 0, 10) || 0);
+  const creditInput = document.getElementById('editKeyCredit_' + index);
+  const creditRemain = document.getElementById('editKeyCreditRemain_' + index);
+  const creditRaw = Math.max(0, parseFloat((creditInput ? creditInput.value : row.credit_limit) || 0) || 0);
+  if (creditRemain && creditRemain.checked) {
+    // 「剩余额度」模式：输入的是还能用多少，落库时换算成总量（已用 + 剩余）。
+    // 剩余填 0 = 立刻停用，直接禁用这一行，避免 0 被当成「不限」。
+    row.credit_limit = Math.round(((row.credit_used || 0) + creditRaw) * 100) / 100;
+    if (creditRaw <= 0) {
+      row.enabled = false;
+      toast('剩余额度设为 0：已禁用 Key [' + (row.name || '未命名') + ']', 'warn');
+    }
+  } else {
+    row.credit_limit = creditRaw;
+  }
+  row._creditRemain = !!(creditRemain && creditRemain.checked);
   if(keyVal) row.key = keyVal;
   row._editing = false;
 
@@ -23755,6 +23959,8 @@ function addApiKeyRow(){
     models: [],
       concurrency_limit: 0,
     daily_token_limit: 0,
+    credit_limit: 0,
+    credit_used: 0,
     enabled: true,
     masked: '',
     _editing: true
@@ -23863,6 +24069,7 @@ async function saveApiKeys(btn){
       accounts: row.accounts || [],
         concurrency_limit: parseInt(row.concurrency_limit || 0, 10) || 0,
         daily_token_limit: parseInt(row.daily_token_limit || 0, 10) || 0,
+        credit_limit: parseFloat(row.credit_limit || 0) || 0,
       enabled: row.enabled !== false,
       // Blank means "keep the stored key", which the server honours per row.
       key: (row.key || '').trim(),
@@ -27195,13 +27402,29 @@ function buildHeatGrid(heat){
 }
 
 /* ---------------- 用量明细（维度切换） ---------------- */
+const creditRatioTip = '按当前区间内同时记录 Token 和实际扣分的成功对话估算。缓存命中和输入输出比例都会影响结果。';
+function renderCreditRatio(sample){
+  if(!sample) return '';
+  const {credit_sample_tokens: tokens, credit_sample_credits: credits, credit_sample_requests: requests} = sample;
+  if(!(tokens > 0 && credits > 0 && requests > 0)){
+    return '<span title="暂无扣分样本">—</span>';
+  }
+  const perMillion = credits / tokens * 1e6;
+  const perCredit = tokens / credits;
+  if(!Number.isFinite(perMillion) || !Number.isFinite(perCredit)) return '—';
+  return `<div title="${creditRatioTip}" style="white-space:nowrap">
+    <b>≈ ${perMillion.toLocaleString('zh-CN', {maximumSignificantDigits: 4})}</b> <span>积分 / 百万 Token</span><br>
+    <small>≈ ${fullNum(perCredit, 1)} <span>Token / 积分</span> · ${fullNum(requests)} <span>扣分样本</span></small>
+  </div>`;
+}
 const dimDefs = {
   model: {
-    head: ['模型', '请求', 'Token', '平均速度', '缓存命中', '消耗积分', '花费'],
+    head: ['模型', '请求', 'Token', '平均速度', '缓存命中', '消耗积分', '积分换算', '花费'],
     columns: [
       {id:'who', label:'模型'}, {id:'req', label:'请求', align:'num'},
       {id:'tok', label:'Token'}, {id:'speed', label:'平均速度', align:'num'},
       {id:'cache', label:'缓存命中', align:'num'}, {id:'credit', label:'消耗积分', align:'num'},
+      {id:'creditRatio', label:'积分换算', align:'num'},
       {id:'cost', label:'花费', align:'num'},
     ],
     rows(){
@@ -27216,6 +27439,7 @@ const dimDefs = {
         speed: m.window.speed_avg,
         cache: m.window.cache_hit_pct,
         credit: m.window.credit != null ? Number(m.window.credit).toFixed(2) : '—',
+        creditSample: m.window,
         cost: m.window.cost_cny,
       }));
     }
@@ -27345,6 +27569,7 @@ function renderDim(){
       speed: r.speed != null ? Number(r.speed).toFixed(0) + ' tok/s' : '—',
       cache: fmtPct(r.cache),
       credit: (r.credit != null && r.credit !== '—') ? (Number(r.credit) > 0 ? '<b style="color:var(--warn)">'+r.credit+'</b>' : r.credit) : '—',
+      creditRatio: renderCreditRatio(r.creditSample),
       remain: remainTxt,
       cost: r.cost != null ? fmtCostCny(r.cost) : '—',
     };
