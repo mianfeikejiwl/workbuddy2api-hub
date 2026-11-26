@@ -12807,6 +12807,8 @@ def runtime_settings_view():
         "asr_enabled": wb_settings.audio_enabled(ACCOUNTS_DIR, "asr"),
         "model_aliases": wb_settings.model_aliases(ACCOUNTS_DIR),
         "model_aliases_enabled": wb_settings.model_aliases_enabled(ACCOUNTS_DIR),
+        "unified_models": wb_settings.unified_models(ACCOUNTS_DIR),
+        "unified_models_enabled": wb_settings.unified_models_enabled(ACCOUNTS_DIR),
         "filter_models_by_key": wb_settings.filter_models_by_key(ACCOUNTS_DIR),
         "reasoning_effort_map": wb_settings.reasoning_effort_map(ACCOUNTS_DIR),
         "models_only_available": wb_settings.models_only_available(ACCOUNTS_DIR),
@@ -18340,6 +18342,24 @@ def rate_limit_is_cap(detail):
         return False
 
 
+# 上游 429 / code 14018：账号积分已耗尽。它不是凭证失效，也不是某个模型的
+# 短暂频率限制；同一账号的付费请求都会继续失败，应走余额保护。
+CREDIT_EXHAUSTED_CODE = 14018
+
+
+def rate_limit_is_credit_exhausted(detail):
+    """True when a 429 explicitly says the account's credits are exhausted."""
+    try:
+        if int(rate_limit_code(detail)) == CREDIT_EXHAUSTED_CODE:
+            return True
+    except (TypeError, ValueError):
+        pass
+    text = (detail or "").lower()
+    return any(marker in text for marker in (
+        "credits exhausted", "credit exhausted", "insufficient credits",
+        "额度已用尽", "积分已用尽"))
+
+
 def rate_limit_is_account_level(detail, reset_at):
     """True only with positive evidence that the 429 is credential-scoped.
 
@@ -19108,6 +19128,15 @@ def open_upstream(payload, session_key=None, target_realm=None, prebuilt_body=No
                 except Exception:
                     detail = ""
                 reset_at = parse_rate_limit_reset(detail)
+                if rate_limit_is_credit_exhausted(detail):
+                    account.note_balance_cooled(
+                        "HTTP 429 (credits exhausted)", detail=detail)
+                    log("account %s credits exhausted (429/14018), parked until 04:00"
+                        % account.uid[:8])
+                    if session_key and POOL:
+                        POOL.affinity.demote(session_key, account.uid)
+                    last_error = exc
+                    continue
                 if rate_limit_is_account_level(detail, reset_at):
                     wait = account.note_soft_rate("HTTP 429 (account soft rate)")
                     log("account %s soft-rate limited (%r), cooling %.0fs (streak %d)"
@@ -19836,6 +19865,12 @@ def probe_account(account, model=None, timeout=30):
         # pool while every dispatch bounces (#435's exemption is not meant to
         # cover a gateway that names the credential as bad).
         row["error"] = wb_accounts.http_error_message(exc, detail, 150)
+        if exc.code == 429 and rate_limit_is_credit_exhausted(detail):
+            account.note_balance_cooled(
+                "HTTP 429 (credits exhausted)", detail=detail)
+            row["balanceProtected"] = True
+            row["fails"] = int(account.fails)
+            return row
         if exc.code == 403 and restriction_is_account_level(detail):
             # 测试也认账号级封禁：命中即持久禁用，只有操作者手动启用才解除。
             # 一并记连坐事件：一键测试正好是发现「整池被清扫」的入口。
@@ -26652,6 +26687,20 @@ class Handler(BaseHTTPRequestHandler):
                                    "invalid_request_error")
             wb_settings.set_model_aliases_enabled(ACCOUNTS_DIR, raw)
             reply["model_aliases_enabled"] = raw
+        if "unified_models" in payload:
+            try:
+                cleaned = wb_settings.set_unified_models(
+                    ACCOUNTS_DIR, payload.get("unified_models"))
+            except ValueError as exc:
+                return self._error(400, str(exc), "invalid_request_error")
+            reply["unified_models"] = cleaned
+        if "unified_models_enabled" in payload:
+            raw = payload.get("unified_models_enabled")
+            if not isinstance(raw, bool):
+                return self._error(400, "unified_models_enabled must be true or false",
+                                   "invalid_request_error")
+            wb_settings.set_unified_models_enabled(ACCOUNTS_DIR, raw)
+            reply["unified_models_enabled"] = raw
         if "filter_models_by_key" in payload:
             raw = payload.get("filter_models_by_key")
             if not isinstance(raw, bool):

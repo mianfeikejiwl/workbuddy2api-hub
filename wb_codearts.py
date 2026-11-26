@@ -2836,16 +2836,18 @@ def overview(config, force=False):
         except CodeArtsError:
             pass
     stats = pool.stats()
-    credit_remain = credit_total = credit_used = 0.0
+    credit_remain = credit_total = credit_used = credit_expiring = 0.0
     for acct in pool.accounts:
         total = ((acct.info or {}).get("credits") or {}).get("total")
         if isinstance(total, dict):
             credit_remain += float(total.get("remain") or 0)
             credit_total += float(total.get("amount") or 0)
             credit_used += float(total.get("used") or 0)
+            credit_expiring += float(total.get("expiring") or 0)
     stats["credits"] = round(credit_remain, 2)
     stats["credits_total"] = round(credit_total, 2)
     stats["credits_used"] = round(credit_used, 2)
+    stats["credits_expiring"] = round(credit_expiring, 2)
     accounts = pool.list()
     models = []
     seen = set()

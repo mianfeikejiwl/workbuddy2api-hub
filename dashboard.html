@@ -3074,6 +3074,7 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     '累计消耗': 'Total spent',
     '已消耗积分': 'Credits spent',
     '已用': 'Used',
+    '即将过期': 'Expiring soon',
     '已用完/过期': 'Exhausted / expired',
     '已用额度最多': 'Most quota used',
     '已禁用': 'Disabled',
@@ -3822,6 +3823,10 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     '该模型暂无定价数据': 'No pricing data for this model yet',
     '该模型被上游临时限流（429），仅此模型受限，到点自动恢复': 'This model is temporarily rate-limited upstream (429); only this model is restricted and it recovers automatically',
     '该模型配额耗尽（code 6004），同账号其他模型不受影响': "This model's quota is exhausted (code 6004); the account's other models are unaffected",
+    '额度耗尽': 'Credits exhausted',
+    '余额保护': 'Balance protection',
+    '上游返回积分耗尽（429 / code 14018），余额保护到 ': 'The upstream reported exhausted credits (429 / code 14018); balance protection lasts until ',
+    '上游返回积分耗尽（HTTP 429 / code 14018），账号级付费请求会继续失败': 'The upstream reported exhausted credits (HTTP 429 / code 14018); paid requests for this account will keep failing',
     '当前窗口的起点未知（没有撞线记录，或记录已过期），已用按最近 24 小时统计，是剩余量的下界': 'The start of the current window is unknown (no cap on record, or a stale one); used counts the last 24h, a lower bound of what is left',
     // 模型冷却 pill 的动态文本按片段匹配（整串含模型名与时间戳，命不中整串键），
     // 所以片段键必须带前后空格，避免误命中其它文案。
@@ -4066,6 +4071,7 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     '猫猫正在旅行途中，请稍后再来查看！': 'The cat is still travelling; check again later!'
   };
   var HANT_PHRASES = {
+    "即将过期": "即將過期",
     "暂无请求记录": "暫無請求記錄",
     "语音合成 TTS": "語音合成 TTS",
     "语音转写 ASR": "語音轉寫 ASR",
@@ -7499,6 +7505,42 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
       <section data-cat="models">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
           <div>
+            <h2 style="margin:0">统一模型（出口感知） <em id="setUnifiedModelsState"></em></h2>
+            <div style="font-size:12px;color:var(--dim);margin-top:4px">
+              一个对外名按出口解析成该出口的真实模型 ID：CN / 国际版 / CodeArts 各自独立，互不覆盖。与上面的「模型别名开关」互斥——统一模型开启时，全局别名不再生效。
+            </div>
+            <div style="font-size:12px;color:var(--dim);margin-top:4px">
+              留空的出口表示该出口不提供这个对外名；填同一个 ID 表示「原名直通」。
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;min-height:40px">
+              <input id="setUnifiedModelsEnabled" type="checkbox" style="width:16px;height:16px">
+              启用统一模型
+            </label>
+            <button onclick="saveUnifiedModels(this)">保存</button>
+          </div>
+        </div>
+        <table class="unified-table" style="width:100%;border-collapse:collapse;margin-top:8px">
+          <colgroup>
+            <col style="width:210px"><col style="width:210px"><col style="width:210px"><col style="width:230px"><col style="width:80px">
+          </colgroup>
+          <thead>
+            <tr style="border-bottom:1px solid var(--border-strong,var(--border))">
+              <th style="padding:6px 8px;font-size:12px;color:var(--dim);text-align:left">对外名</th>
+              <th style="padding:6px 8px;font-size:12px;color:var(--dim);text-align:left">wb_cn</th>
+              <th style="padding:6px 8px;font-size:12px;color:var(--dim);text-align:left">wb_intl</th>
+              <th style="padding:6px 8px;font-size:12px;color:var(--dim);text-align:left">CodeArts</th>
+              <th style="padding:6px 8px;text-align:center"><button onclick="addUnifiedModelRow()" style="padding:4px 10px">添加</button></th>
+            </tr>
+          </thead>
+          <tbody id="unifiedModelsRows"></tbody>
+        </table>
+      </section>
+
+      <section data-cat="models">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <div>
             <h2 style="margin:0">启用 Anthropic Messages 接口 (Claude) <em id="setAnthropicMessagesState"></em></h2>
             <div style="font-size:12px;color:var(--dim);margin-top:4px">
               允许 Claude Code / Anthropic SDK 访问网关 /v1/messages。网关对内将其转换为 OpenAI Chat Completions 协议转发。
@@ -9477,9 +9519,11 @@ function renderCodeartsCards(r){
   const credits = (st.credits != null) ? st.credits : null;
   const creditsTotal = (st.credits_total != null) ? st.credits_total : null;
   const creditsUsed = (st.credits_used != null) ? st.credits_used : null;
+  const creditsExpiring = (st.credits_expiring != null) ? st.credits_expiring : null;
   const creditSub = (creditsTotal != null)
     ? ("剩余 / 总 " + fmtCredits(creditsTotal)
-       + (creditsUsed != null ? " · 已用 " + fmtCredits(creditsUsed) : ""))
+       + (creditsUsed != null ? " · 已用 " + fmtCredits(creditsUsed) : "")
+       + (creditsExpiring ? " · 即将过期 " + fmtCredits(creditsExpiring) : ""))
     : "CodeArts 积分";
   box.innerHTML =
     card("健康账号", healthy + "/" + total, "由本进程直接管理")
@@ -9543,7 +9587,11 @@ function renderCodeartsAccounts(r){
     const token = escapeHtml((a.token_remaining || "—") + (a.expires_at ? " · " + a.expires_at : ""));
     const credits = (a.credits && a.credits.remain != null)
       ? (fmtCredits(a.credits.remain)
-         + (a.credits.used ? '<div style="font-size:11px;color:var(--dim)">已用 ' + fmtCredits(a.credits.used) + '</div>' : ''))
+         + ((a.credits.used || a.credits.expiring)
+            ? '<div style="font-size:11px;color:var(--dim)">已用 ' + fmtCredits(a.credits.used || 0)
+              + (a.credits.expiring ? ' / 即将过期 ' + fmtCredits(a.credits.expiring) : '')
+              + '</div>'
+            : ''))
       : "—";
     const conc = (a.active_concurrent != null ? a.active_concurrent : 0)
       + "/" + (a.max_concurrent != null ? a.max_concurrent : "—");
@@ -12709,6 +12757,7 @@ function accountRow(a){
               : a.reserveBlocked ? '<span class="badge warn">保留积分</span>'
               : a.dailyLimitBlocked ? '<span class="badge warn" title="今日已用 ' + fmt(a.dailyTokensToday || 0) + ' / ' + fmt(a.dailyTokenLimit || 0) + ' token，暂停接单（本地 0 点恢复）">日限额</span>'
               : a.creditLimitReached ? '<span class="badge warn" title="今日已消费 ' + Number(a.dailyCreditsToday || 0).toFixed(2) + ' / ' + (a.dailyCreditLimit || 0) + ' 积分，仅免费模型可用（本地 0 点恢复）">积分限额</span>'
+              : a.balanceProtected ? '<span class="badge warn" title="上游返回积分耗尽（429 / code 14018），余额保护到 ' + esc(fmtCoolAt(a.balanceUntil)) + '，请刷新积分后再试">额度耗尽</span>'
               // 熔断/降权也是"不接单"，但跟上游配额无关：上游连续失败把账号
               // 关进本地保护窗口。少了这两支，账号会被画成绿色「可用」，而池子
               // 其实是空的——生产上就是这么误导排查的。
@@ -13156,7 +13205,12 @@ function disabledRows(){
       rows.push({who, realm, scope: '账号', kind: '本地停用', manual: true,
                  reason: '面板手动停用，该账号不参与轮询', until: ''});
     }
-    if(a.inCooldown && !a.accountBanned){
+    if(a.balanceProtected && !a.accountBanned){
+      rows.push({who, realm, scope: '账号', kind: '余额保护', detail,
+                 reason: '上游返回积分耗尽（HTTP 429 / code 14018），账号级付费请求会继续失败',
+                 until: a.balanceUntil ? fmtCoolAt(a.balanceUntil) : ''});
+    }
+    if(a.inCooldown && !a.accountBanned && !a.balanceProtected){
       const secs = Number(a.cooldownFor || 0);
       const streak = Number(a.softStreak || 0);
       rows.push({who, realm, scope: '账号', kind: '上游限流', detail,
@@ -17637,6 +17691,17 @@ async function loadSettings(showToast, opts){
       window.MODEL_ALIASES_ENABLED = modelAliasesEnabled;
       const modelAliasesEnabledInput = document.getElementById('setModelAliasesEnabled');
       if(modelAliasesEnabledInput) modelAliasesEnabledInput.checked = modelAliasesEnabled;
+      const unifiedModels = data.unified_models && typeof data.unified_models === 'object' ? data.unified_models : {};
+      window.UNIFIED_MODELS = unifiedModels;
+      const unifiedEnabled = data.unified_models_enabled === true;
+      const umToggle = document.getElementById('setUnifiedModelsEnabled');
+      if(umToggle) umToggle.checked = unifiedEnabled;
+      const umState = document.getElementById('setUnifiedModelsState');
+      if(umState){
+        umState.textContent = unifiedEnabled ? '(已启用)' : '(未启用)';
+        umState.style.color = unifiedEnabled ? 'var(--accent2)' : 'var(--dim)';
+      }
+      renderUnifiedModels(unifiedModels);
       const modelAliasesEnabledState = document.getElementById('setModelAliasesEnabledState');
       if(modelAliasesEnabledState){
         modelAliasesEnabledState.textContent = modelAliasesEnabled ? '(已启用)' : '(未启用)';
@@ -18554,6 +18619,59 @@ async function saveAnthropicMessages(btn){
   }
 }
 
+window.UNIFIED_MODELS = {};
+function _umRowHtml(name, cn, intl, ca){
+  const inp = (cls,v,ph)=>'<input class="'+cls+'" value="'+escapeHtml(v)+'"'
+    +(ph?' placeholder="'+escapeHtml(ph)+'"':'')
+    +' style="width:100%;box-sizing:border-box">';
+  return '<tr class="unified-row">'
+    + '<td style="padding:4px 8px;text-align:left">'+inp('um-name',name,'deepseek-v4.1-flash')+'</td>'
+    + '<td style="padding:4px 8px;text-align:left">'+inp('um-cn',cn,'deepseek-v4.1-flash')+'</td>'
+    + '<td style="padding:4px 8px;text-align:left">'+inp('um-intl',intl,'可选')+'</td>'
+    + '<td style="padding:4px 8px;text-align:left">'+inp('um-codearts',ca,'deepseek-v4.1-flash-1017')+'</td>'
+    + '<td style="padding:4px 8px;text-align:center"><button onclick="this.closest(\'tr\').remove()" style="padding:4px 8px">删除</button></td>'
+    + '</tr>';
+}
+function addUnifiedModelRow(name, cn, intl, ca){
+  const box=document.getElementById('unifiedModelsRows');
+  if(!box) return;
+  const wrap=document.createElement('tbody');
+  wrap.innerHTML=_umRowHtml(name,cn,intl,ca);
+  box.appendChild(wrap.firstChild);
+}
+function renderUnifiedModels(table){
+  const box=document.getElementById('unifiedModelsRows');
+  if(!box) return;
+  box.innerHTML='';
+  const t=(table&&typeof table==='object')?table:{};
+  const keys=Object.keys(t);
+  if(!keys.length){ addUnifiedModelRow('','','',''); return; }
+  keys.forEach(function(k){ const m=t[k]||{}; addUnifiedModelRow(k,m.cn||'',m.intl||'',m.codearts||''); });
+}
+async function saveUnifiedModels(btn){
+  const rows=Array.prototype.slice.call(document.querySelectorAll('#unifiedModelsRows .unified-row'));
+  const table={};
+  for(const r of rows){
+    const name=((r.querySelector('.um-name').value)||'').trim().toLowerCase();
+    if(!name) continue;
+    const m={};
+    const pairs=[['.um-cn','cn'],['.um-intl','intl'],['.um-codearts','codearts']];
+    for(const pr of pairs){
+      const v=((r.querySelector(pr[0]).value)||'').trim();
+      if(v) m[pr[1]]=v;
+    }
+    if(Object.keys(m).length) table[name]=m;
+  }
+  const el=document.getElementById('setUnifiedModelsEnabled');
+  const enabled=!!(el&&el.checked);
+  if(btn) btn.disabled=true;
+  try{
+    await postJSON('/settings/save', {unified_models: table, unified_models_enabled: enabled});
+    toast('统一模型已保存'+(enabled?'（已启用）':'（未启用）'), 'ok');
+    loadSettings();
+  }catch(e){ toast('保存失败: '+e.message, 'bad'); }
+  finally{ if(btn) btn.disabled=false; }
+}
 async function saveModelAliasesEnabled(btn){
   const el = document.getElementById('setModelAliasesEnabled');
   const value = !!(el && el.checked);
@@ -25476,7 +25594,7 @@ if (typeof SORT_DENY_TABLES !== 'undefined' && SORT_DENY_TABLES && SORT_DENY_TAB
     model: {
       title: '模型与定价',
       desc: '价格估算、Anthropic 适配、思考档位和模型过滤。',
-      items: ['模型价格估算', '启用 Anthropic Messages', '思考等级挡位映射', '按 API Key 过滤模型列表', '只列出可用模型', '文本 / 媒体号池隔离']
+      items: ['模型价格估算', '统一模型（出口感知）', '启用统一模型', '启用 Anthropic Messages', '思考等级挡位映射', '按 API Key 过滤模型列表', '只列出可用模型', '文本 / 媒体号池隔离']
     },
     automation: {
       title: '自动化',
