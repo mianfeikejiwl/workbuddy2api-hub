@@ -12,6 +12,9 @@ assert.ok(/\.acct-actions-row\{flex-wrap:nowrap;max-width:none\}/.test(html), '�
 // 不再写死一个大 min-width 让右侧被裁掉。
 assert.ok(/table\.account-cards\{table-layout:fixed;width:100%;min-width:1096px\}/.test(html),
   '桌面账号表应跟随容器宽度，min-width 只作横向滚动的兜底');
+assert.ok(/@media \(min-width:1280px\)[\s\S]*?col\.acct-col-status\{width:8%\}/.test(html)
+  && /@media \(min-width:1280px\)[\s\S]*?col\.acct-col-cache\{width:7%\}/.test(html),
+  '状态到缓存各列应共享同一套宽屏比例');
 // 勾选列始终渲染，所以「勾选 / 版本 / 账号」三列常驻吸附，偏移固定为 0 / 32 / 100。
 assert.ok(/table\.account-cards th:nth-child\(1\),\s*table\.account-cards tbody tr:not\(\.cool-row\) td:nth-child\(1\)\{[^}]*position:sticky;left:0/.test(html),
   '勾选列应固定在左侧');

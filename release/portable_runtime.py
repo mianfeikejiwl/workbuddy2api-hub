@@ -80,7 +80,7 @@ REQUIRED_FILES = (
     "Lib/platform.py", "Lib/socket.py",
     "Lib/json/__init__.py", "Lib/urllib/__init__.py", "Lib/urllib/request.py",
     "Lib/uuid.py", "Lib/secrets.py",
-    "Lib/argparse.py", "Lib/base64.py", "Lib/bisect.py", "Lib/calendar.py", "Lib/contextlib.py", "Lib/copy.py", "Lib/datetime.py",
+    "Lib/argparse.py", "Lib/base64.py", "Lib/binascii.py", "Lib/bisect.py", "Lib/calendar.py", "Lib/contextlib.py", "Lib/copy.py", "Lib/datetime.py",
     "Lib/difflib.py", "Lib/fnmatch.py", "Lib/getpass.py", "Lib/gzip.py", "Lib/heapq.py",
     "Lib/ipaddress.py", "Lib/pathlib.py", "Lib/queue.py", "Lib/shutil.py", "Lib/random.py", "Lib/string.py",
     "Lib/subprocess.py", "Lib/threading.py", "Lib/struct.py", "Lib/sqlite3/__init__.py",
@@ -90,7 +90,7 @@ REQUIRED_FILES = (
     "Lib/ctypes/__init__.py", "Lib/collections/__init__.py", "Lib/re/__init__.py",
     "DLLs/_socket.pyd", "DLLs/_ssl.pyd", "DLLs/_hashlib.pyd", "DLLs/_ctypes.pyd",
     "DLLs/select.pyd", "DLLs/unicodedata.pyd", "DLLs/_uuid.pyd", "DLLs/_decimal.pyd",
-    "DLLs/_sqlite3.pyd",
+    "DLLs/_sqlite3.pyd", "DLLs/_struct.pyd",
     "DLLs/libffi-8.dll", "DLLs/libssl-3-x64.dll", "DLLs/libcrypto-3-x64.dll",
 )
 

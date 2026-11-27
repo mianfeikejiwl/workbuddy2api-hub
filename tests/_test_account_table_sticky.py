@@ -24,19 +24,27 @@ STYLES = "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", HTML, re.S))
 
 def fixture(table_width=1073):
     headers = [
-        '<th class="acct-check" style="text-align:center;width:32px"></th>',
-        '<th style="text-align:center;width:62px">版本</th>',
+        '<th class="acct-check" style="text-align:center"></th>',
+        '<th style="text-align:center">版本</th>',
         '<th style="text-align:left">账号</th>',
-        '<th style="text-align:center;width:52px">状态</th>',
-        '<th style="text-align:center;width:96px">今日活动</th>',
+        '<th style="text-align:center">状态</th>',
+        '<th style="text-align:center">今日活动</th>',
         '<th style="text-align:center">出口</th>',
-        '<th style="text-align:center;width:58px">权重</th>',
+        '<th style="text-align:center">权重</th>',
         '<th style="text-align:left">积分</th>',
-        '<th style="text-align:right;width:38px">请求</th>',
-        '<th style="text-align:right;width:50px">总 token</th>',
-        '<th style="text-align:right;width:48px">缓存</th>',
-        '<th style="text-align:center;width:252px">操作</th>',
+        '<th style="text-align:right">请求</th>',
+        '<th style="text-align:right">总 token</th>',
+        '<th style="text-align:right">缓存</th>',
+        '<th style="text-align:center">操作</th>',
     ]
+    colgroup = (
+        '<colgroup>'
+        '<col class="acct-col-check"><col class="acct-col-version"><col class="acct-col-name">'
+        '<col class="acct-col-status"><col class="acct-col-activity"><col class="acct-col-egress">'
+        '<col class="acct-col-weight"><col class="acct-col-credits"><col class="acct-col-requests">'
+        '<col class="acct-col-tokens"><col class="acct-col-cache"><col class="acct-col-actions">'
+        '</colgroup>'
+    )
     cells = [
         '<td class="acct-check" style="text-align:center"><input type="checkbox"></td>',
         '<td style="text-align:center;white-space:nowrap" data-label="版本">INTL</td>',
@@ -67,7 +75,7 @@ def fixture(table_width=1073):
         f"<style>{STYLES}main{{max-width:none!important;padding:0!important}}"
         "#wrap{margin-left:0!important}</style></head><body><main>"
         f'<div id="wrap" class="table-wrap" style="width:{table_width}px;margin-left:281px">'
-        '<table class="data-cards account-cards"><thead><tr>'
+        '<table class="data-cards account-cards">' + colgroup + '<thead><tr>'
         + "".join(headers)
         + "</tr></thead><tbody>"
         + rows
@@ -145,7 +153,7 @@ class AccountTableStickyTests(unittest.TestCase):
         self.assertLessEqual(data["nameRight"], data["wrapRight"] + 1)
         self.assertNotEqual(data["coolPosition"], "sticky")
 
-    def test_wide_desktop_gives_extra_width_to_egress_and_credits(self):
+    def test_wide_desktop_spreads_extra_width_across_status_to_cache(self):
         page = self.page(1700, 950, table_width=1370)
         try:
             widths = page.locator("thead th").evaluate_all(
@@ -153,10 +161,57 @@ class AccountTableStickyTests(unittest.TestCase):
             )
         finally:
             page.close()
-        self.assertAlmostEqual(widths[2], 184, delta=1)
-        self.assertGreater(widths[5], 120)
-        self.assertGreater(widths[7], 112)
+        # 固定列保持像素宽，中间八列共享余量；不能只让出口/积分变宽。
+        self.assertAlmostEqual(widths[0], 32, delta=1)
+        self.assertAlmostEqual(widths[1], 62, delta=1)
+        self.assertAlmostEqual(widths[11], 252, delta=1)
+        for index in range(3, 11):
+            self.assertGreater(widths[index], 65)
+        self.assertGreater(widths[2], 210)
+        self.assertGreater(widths[7], widths[5])
+        self.assertGreater(widths[9], widths[8])
+        self.assertGreater(widths[9], widths[10])
         self.assertAlmostEqual(widths[-1], 252, delta=1)
+
+    def test_sticky_edges_use_plain_borders_without_shadows(self):
+        page = self.page(1700, 950, table_width=1370)
+        try:
+            edges = page.evaluate(
+                """() => {
+                    const bodyCell = document.querySelector('tbody td.acct-actions');
+                    const headCell = document.querySelector('thead th:last-child');
+                    const bodyActions = getComputedStyle(bodyCell);
+                    const headActions = getComputedStyle(headCell);
+                    const activeSheet = [...document.styleSheets].find((sheet) => {
+                      if (sheet.disabled || !matchMedia(sheet.media.mediaText).matches) return false;
+                      try {
+                        return [...sheet.cssRules].some((rule) => (
+                          rule.selectorText === 'table.account-cards td.acct-actions'
+                        ));
+                      } catch (_) {
+                        return false;
+                      }
+                    });
+                    return {
+                        activeRuleFound: !!activeSheet,
+                        bodyShadow: bodyActions.boxShadow,
+                        headShadow: headActions.boxShadow,
+                        bodyLeft: bodyActions.borderLeftWidth,
+                        headLeft: headActions.borderLeftWidth,
+                        bodyStyle: bodyActions.borderLeftStyle,
+                        headStyle: headActions.borderLeftStyle,
+                    };
+                }"""
+            )
+        finally:
+            page.close()
+        self.assertTrue(edges["activeRuleFound"], "生效样式表里缺少操作列分隔线")
+        self.assertEqual(edges["bodyShadow"], "none")
+        self.assertEqual(edges["headShadow"], "none")
+        self.assertEqual(edges["bodyLeft"], "1px")
+        self.assertEqual(edges["headLeft"], "1px")
+        self.assertEqual(edges["bodyStyle"], "solid")
+        self.assertEqual(edges["headStyle"], "solid")
 
     def test_mobile_cards_cancel_sticky_and_do_not_overflow(self):
         page = self.page(390, 844)
