@@ -54,5 +54,9 @@ assert.ok(/#pageAnalytics \.recent-list\{display:flex;flex-direction:column;max-
 assert.ok(/#pageAnalytics \.maingrid\{[^}]*align-items:stretch\}/.test(html), '主区两栏底部对齐');
 assert.ok(/#modelsTable\{table-layout:fixed\}/.test(html), '网关模型清单应固定布局占满宽度');
 assert.ok(/#modelsTable th,#modelsTable td\{white-space:nowrap;overflow:hidden;text-overflow:ellipsis\}/.test(html), '模型清单单元格不应换行');
+assert.ok(/@media \(max-width:640px\)[\s\S]*?#pageGateway \.next-source-badge\{\s*display:flex;\s*flex-wrap:wrap;[^}]*width:100%/.test(html),
+  '移动端模型页数据源徽章应允许换行并收在容器内');
+assert.ok(/@media \(max-width:640px\)[\s\S]*?#pageGateway #modelsTable\{\s*min-width:0 !important;\s*table-layout:auto;\s*\}[\s\S]*?#pageGateway #modelsTable :is\(td,th\):is\(:first-child,[\s\S]*?:nth-child\(9\)\)\{\s*width:auto !important;\s*\}/.test(html),
+  '移动端模型表应重置桌面固定列宽为 auto 并恢复卡片流式宽度');
 
 console.log('_test_ui_layout_refinements.js: all assertions passed');
