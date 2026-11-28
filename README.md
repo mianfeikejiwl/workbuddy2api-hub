@@ -20,7 +20,7 @@
 This project is for protocol research and personal use only. Prefer the official client, do not use your primary account, and do not resell or share access.
 
 <p align="center">
-  <a href="https://github.com/niyouqianma/workbuddy2api-hub/releases"><img src="https://img.shields.io/badge/Release-v2.2.7-2496ED?style=flat-square" alt="Version 2.2.7"></a>
+  <a href="https://github.com/niyouqianma/workbuddy2api-hub/releases"><img src="https://img.shields.io/badge/Release-v2.2.8-2496ED?style=flat-square" alt="Version 2.2.8"></a>
   <img src="https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square" alt="Python">
   <img src="https://img.shields.io/badge/API-OpenAI_Compatible-412991?style=flat-square" alt="OpenAI API">
   <img src="https://img.shields.io/badge/Dual_Realm-Intl_&_CN-0DBD8B?style=flat-square" alt="Dual Realm">
@@ -289,13 +289,6 @@ python tests/run_all.py realm      # 只跑名字里含 realm 的
 ## 七、版本更新记录 (Changelog)
 
 本版更新与完整历史版本请查阅 **[docs/CHANGELOG.md](docs/CHANGELOG.md)**。
-### Unreleased
-
-- **MCP 服务端点**（`POST /mcp`，默认可用）：实现 MCP 2025-06-18 的无状态 JSON-RPC 子集（只回 `application/json`，不维护会话），把网关已有能力包成 6 个工具：`list_generation_models`、`generate_image`、`edit_image`、`generate_video`、`get_video_task`、`strip_watermark`（仅在去水印开关打开时出现）。工具调用不是另起一套逻辑，而是把参数当成 REST 请求体喂回既有 handler，所以选号、换号、计费与台账与直接调 REST 完全同一条路径。`GET /mcp` 返回 405 + `Allow: POST`。
-- **图片去水印裁切**（`POST /v1/images/strip-watermark`，开关 `watermark.enabled`，默认关）：从下往上逐行算亮度标准差，找出画面底部那条纯白留白的边界并裁掉。纯标准库实现，只收 PNG（其它格式回 415 并提示先转 PNG），不消耗上游积分（回执里 `usage.credit` 恒为 0）。留白不够高或不够白时回 422 并带上实测数字（留白像素数、占比、平均亮度），提示先用 `edit_image` 把底部约 1/3 涂成纯白再来裁。回读远端图片只放行上游产物域 `.myqcloud.com`，且不跟随重定向。
-- **文本嵌入接口**（`POST /v1/embeddings`，开关 `embeddings.enabled`，默认关）：OpenAI 兼容形状，转上游 `/v2/embeddings`，模型 `bge-m3`（1024 维，上游唯一实测可用的嵌入模型；嵌入模型与对话模型是两套注册表，`/v3/config` 里查不到）。响应会补齐 `object` / `index` 等 OpenAI 契约字段，条数不符直接报错而不是错位配对；`model_not_found` 与 `upstream_busy` 不换号不罚号。
-- **面板补上三块新能力的入口**：去水印与嵌入此前只有接口、没有界面，开关只能手改 `settings.json`。现在「媒体」页各有一张卡片——去水印可保存开关 / 最小留白像素 / 白度阈值 / 像素上限，并带一个就地试用区（选 PNG → 看裁切前后对比与实测数字 → 下载），走的就是同一个接口，不发上游也不扣积分；嵌入可保存开关 / 默认模型 / 单次最多条数。MCP 区列出 6 个工具和一键复制的客户端配置片段，不带开关（它是给外部客户端连的端点）。三张卡片都按「字段缺失即关闭」渲染，与媒体卡片对旧后端的兼容口径一致。
-- 传统布局的设置分类栏移到顶部，分组标题和说明随选择更新（#41）。
 
 ---
 
